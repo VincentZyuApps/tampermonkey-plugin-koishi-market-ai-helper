@@ -9,6 +9,7 @@ export function bindLogPanel(shadow: ShadowRoot, state: AppState, logger: Logger
   shadow.querySelector('[data-action="clear-log"]')?.addEventListener('click', () => {
     state.logs = [];
     logger.write('info', '日志已清空');
+    render();
   });
 
   shadow.querySelector('[data-action="copy-log"]')?.addEventListener('click', () => {

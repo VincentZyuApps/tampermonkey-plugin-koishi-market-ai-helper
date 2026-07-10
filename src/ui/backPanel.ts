@@ -11,7 +11,7 @@ export function updateBackPanel(shadow: ShadowRoot, type: 'settings' | 'log', op
 
   const action = type === 'settings' ? 'toggle-settings' : 'toggle-log';
   const text = type === 'settings'
-    ? open ? '向下收起设置' : '向上展开设置'
+    ? open ? '向左下收起设置' : '向右上展开设置'
     : open ? '向右收起日志' : '向左展开日志';
   const button = shadow.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
   button?.setAttribute('title', text);

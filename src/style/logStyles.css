@@ -1,11 +1,12 @@
   .kmh-log {
     position: fixed;
-    right: 390px;
-    bottom: 36px;
+    right: 406px;
+    top: 22px;
+    bottom: 22px;
     z-index: 2147483646;
     width: 332px;
     max-width: calc(100vw - 72px);
-    max-height: 500px;
+    max-height: none;
     border: 1px solid var(--kmh-border);
     border-right: 0;
     border-radius: 9px 0 0 9px;
@@ -18,7 +19,7 @@
     opacity: 0;
     pointer-events: none;
     transform: translateX(30px) scale(.985);
-    transform-origin: right bottom;
+    transform-origin: right center;
     transition:
       opacity 180ms ease,
       transform 260ms cubic-bezier(.22, 1, .36, 1);
@@ -98,6 +99,10 @@
     font-weight: 700;
   }
   .kmh-log-warn .kmh-log-level, .kmh-log-error .kmh-log-level { background: var(--kmh-brand-strong); }
+  .kmh-log-debug .kmh-log-level, .kmh-log-trace .kmh-log-level {
+    color: var(--kmh-brand-strong);
+    background: color-mix(in srgb, var(--kmh-brand) 14%, Canvas);
+  }
   .kmh-log-time { color: var(--kmh-muted); }
   .kmh-log-message {
     min-width: 0;

@@ -1,7 +1,8 @@
 export type Provider = 'openai' | 'anthropic';
 export type Role = 'user' | 'assistant';
-export type LogLevel = 'info' | 'warn' | 'error';
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 export type SendMode = 'enter' | 'ctrlEnter';
+export type ChatDetail = 'chatty' | 'normal' | 'quiet';
 
 export interface Config {
   provider: Provider;
@@ -11,6 +12,8 @@ export interface Config {
   persistApiKey: boolean;
   saveHistory: boolean;
   stream: boolean;
+  chatDetail: ChatDetail;
+  logLevel: LogLevel;
   recallLimit: number;
   temperature: number;
   maxTokens: number;
@@ -26,6 +29,9 @@ export interface LogEntry {
 export interface Message {
   role: Role;
   content: string;
+  reasoning?: string;
+  reasoningOpen?: boolean;
+  progress?: string;
   cards?: PluginSummary[];
   notes?: string[];
 }
@@ -129,6 +135,12 @@ export interface LlmRecommendation {
   reason?: string;
   warning?: string;
   query?: string;
+}
+
+export interface LlmStreamSnapshot {
+  content: string;
+  reasoning: string;
+  events: number;
 }
 
 export interface AppState {

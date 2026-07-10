@@ -12,12 +12,12 @@ export function renderBubble(): string {
   `;
 }
 
-export function renderPanel(state: AppState, apiKey: string): string {
+export function renderPanel(state: AppState, apiKey: string, animateEnter = false): string {
   return `
     ${renderAbout(state)}
     ${renderSettings(state, apiKey)}
     ${renderLogs(state)}
-    <div class="kmh-stack">
+    <div class="kmh-stack ${animateEnter ? 'kmh-stack-enter' : ''}">
       <section class="kmh-panel" aria-label="Koishi AI 插件搜索助手">
         <header class="kmh-header">
           <div class="kmh-title-wrap">
@@ -29,13 +29,13 @@ export function renderPanel(state: AppState, apiKey: string): string {
           </div>
           <div class="kmh-header-actions">
             <button class="kmh-icon-btn" type="button" data-action="toggle-log" title="${state.logOpen ? '向右收起日志' : '向左展开日志'}" aria-label="${state.logOpen ? '向右收起日志' : '向左展开日志'}">${renderIcon('log')}</button>
-            <button class="kmh-icon-btn" type="button" data-action="toggle-settings" title="${state.settingsOpen ? '向下收起设置' : '向上展开设置'}">⚙</button>
+            <button class="kmh-icon-btn" type="button" data-action="toggle-settings" title="${state.settingsOpen ? '向左下收起设置' : '向右上展开设置'}">⚙</button>
             <button class="kmh-icon-btn" type="button" data-action="collapse" title="收回">−</button>
             <button class="kmh-icon-btn" type="button" data-action="close-page" title="本页关闭">×</button>
           </div>
         </header>
         <main class="kmh-messages" data-role="messages">
-          ${state.messages.map(renderMessage).join('')}
+          ${renderMessages(state.messages)}
         </main>
         ${state.notice ? `<div class="kmh-notice">${escapeHtml(state.notice)}</div>` : ''}
         <footer class="kmh-compose">
@@ -46,11 +46,11 @@ export function renderPanel(state: AppState, apiKey: string): string {
           </div>
           <div class="kmh-compose-actions">
             <select class="kmh-send-mode" data-role="send-mode" title="选择回车发送方式">
-              <option value="enter" ${state.sendMode === 'enter' ? 'selected' : ''}>↵ Enter发送 / Ctrl+Enter换行</option>
-              <option value="ctrlEnter" ${state.sendMode === 'ctrlEnter' ? 'selected' : ''}>⌘ Ctrl+Enter发送 / Enter换行</option>
+              <option value="enter" ${state.sendMode === 'enter' ? 'selected' : ''}>↵ Enter 发送</option>
+              <option value="ctrlEnter" ${state.sendMode === 'ctrlEnter' ? 'selected' : ''}>⌘ Ctrl+Enter 发送</option>
             </select>
             <button class="kmh-secondary" type="button" data-action="local-search" ${state.busy ? 'disabled' : ''}>🧭 本地搜索</button>
-            <button class="kmh-primary" type="button" data-action="send" ${state.busy ? 'disabled' : ''}>${state.busy ? '🔍 搜索中…' : '🚀 发送'}</button>
+            <button class="${state.busy ? 'kmh-stop' : 'kmh-primary'}" type="button" data-action="send" title="${state.busy ? '停止当前请求，快捷键 Esc' : '发送当前输入'}">${state.busy ? '⏹ 停止' : '🚀 发送'}</button>
           </div>
         </footer>
       </section>
@@ -116,6 +116,24 @@ function renderSettings(state: AppState, apiKey: string): string {
           <span>📏 最大输出 token</span>
           <input data-setting="maxTokens" type="number" min="300" max="8000" value="${escapeAttr(String(state.config.maxTokens))}">
         </label>
+        <label>
+          <span>💬 聊天过程</span>
+          <select data-setting="chatDetail">
+            <option value="chatty" ${state.config.chatDetail === 'chatty' ? 'selected' : ''}>chatty · 显示推理与正文</option>
+            <option value="normal" ${state.config.chatDetail === 'normal' ? 'selected' : ''}>normal · 显示阶段与正文</option>
+            <option value="quiet" ${state.config.chatDetail === 'quiet' ? 'selected' : ''}>quiet · 只显示必要结果</option>
+          </select>
+        </label>
+        <label>
+          <span>🧾 Log level</span>
+          <select data-setting="logLevel">
+            <option value="error" ${state.config.logLevel === 'error' ? 'selected' : ''}>error</option>
+            <option value="warn" ${state.config.logLevel === 'warn' ? 'selected' : ''}>warn</option>
+            <option value="info" ${state.config.logLevel === 'info' ? 'selected' : ''}>info</option>
+            <option value="debug" ${state.config.logLevel === 'debug' ? 'selected' : ''}>debug</option>
+            <option value="trace" ${state.config.logLevel === 'trace' ? 'selected' : ''}>trace</option>
+          </select>
+        </label>
       </div>
       <label class="kmh-check">
         <input data-setting="persistApiKey" type="checkbox" ${state.config.persistApiKey ? 'checked' : ''}>
@@ -158,14 +176,36 @@ function renderLogs(state: AppState): string {
   `;
 }
 
-function renderMessage(message: Message): string {
+export function renderMessages(messages: Message[]): string {
+  return messages.map((message, index) => renderMessage(message, index)).join('');
+}
+
+function renderMessage(message: Message, index: number): string {
   return `
     <article class="kmh-message kmh-${message.role}">
       <div class="kmh-message-role">${message.role === 'user' ? '🧑 你' : '🤖 助手'}</div>
+      ${message.progress ? `<div class="kmh-message-progress">${escapeHtml(message.progress)}</div>` : ''}
+      ${message.reasoning ? renderReasoning(message, index) : ''}
       <div class="kmh-message-content">${formatContent(message.content)}</div>
       ${message.cards?.length ? renderCards(message.cards) : ''}
       ${message.notes?.length ? renderNotes(message.notes) : ''}
     </article>
+  `;
+}
+
+function renderReasoning(message: Message, index: number): string {
+  const isOpen = Boolean(message.reasoningOpen);
+  const chars = message.reasoning?.length || 0;
+  return `
+    <section class="kmh-reasoning">
+      <button class="kmh-reasoning-head" type="button" data-action="toggle-reasoning" data-message-index="${escapeAttr(String(index))}" aria-expanded="${isOpen ? 'true' : 'false'}">
+        <span>🧠 思考过程 · ${escapeHtml(String(chars))} chars</span>
+        <span>${isOpen ? '收起' : '展开'}</span>
+      </button>
+      <div class="kmh-message-reasoning ${isOpen ? 'kmh-reasoning-open' : 'kmh-reasoning-collapsed'}" data-role="reasoning-body" data-message-index="${escapeAttr(String(index))}">
+        ${formatContent(message.reasoning || '')}
+      </div>
+    </section>
   `;
 }
 

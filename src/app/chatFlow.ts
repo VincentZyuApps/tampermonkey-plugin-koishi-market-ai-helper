@@ -6,7 +6,7 @@ import { loadRegistry } from '../market/registryClient';
 import { searchPlugins } from '../market/searchEngine';
 import { clampRecallLimit } from '../ui/settingsForm';
 import type { Logger } from '../log/appLogger';
-import type { AppState, PluginSummary } from '../types/appTypes';
+import type { AppState, LlmStreamSnapshot, Message, PluginSummary } from '../types/appTypes';
 
 export async function searchAndRespond(
   state: AppState,
@@ -14,9 +14,23 @@ export async function searchAndRespond(
   query: string,
   forceLocal: boolean,
   render: () => void,
+  signal?: AbortSignal,
 ): Promise<void> {
+  const placeholder: Message = { role: 'assistant', content: '📚 正在加载 Koishi 插件索引……', cards: [] };
+  state.messages.push(placeholder);
+  setAssistantStatus(placeholder, logger, render, '📚 正在加载 Koishi 插件索引……', {
+    registryCached: Boolean(state.registry),
+  });
+
   const registry = await loadRegistry(state, logger);
+  throwIfAborted(signal);
+  setAssistantStatus(placeholder, logger, render, '🧭 正在本地召回候选插件……', {
+    total: registry.objects.length,
+    recallLimit: clampRecallLimit(state.config.recallLimit),
+  });
+
   const localResults = searchPlugins(registry.objects, query, clampRecallLimit(state.config.recallLimit));
+  throwIfAborted(signal);
   state.lastLocalResults = localResults;
   logger.write('info', '本地召回完成', {
     total: registry.objects.length,
@@ -26,27 +40,62 @@ export async function searchAndRespond(
       name: result.item.name,
     })),
   });
+  setAssistantStatus(placeholder, logger, render, `🧩 已召回 ${localResults.length} 个候选插件，正在判断是否需要 LLM 重排……`, {
+    top: localResults.slice(0, 3).map((result) => result.item.name),
+  });
 
   if (forceLocal || !getApiKey(state.config, state.sessionApiKey)) {
-    pushLocalResults(state, logger, forceLocal, localResults.map((result) => result.item));
+    fillLocalResults(placeholder, logger, forceLocal, localResults.map((result) => result.item));
+    render();
     return;
   }
 
-  const placeholder = { role: 'assistant' as const, content: '🔍 正在召回插件并请求 LLM 重排……', cards: [] };
-  state.messages.push(placeholder);
-  render();
+  const requestProfile = buildLlmRequestProfile(state);
+  setAssistantStatus(placeholder, logger, render, '🌐 正在请求 LLM API，等待模型接收任务……', {
+    provider: state.config.provider,
+    model: state.config.model,
+    stream: state.config.stream,
+  }, requestProfile);
   logger.write('info', '开始请求 LLM', {
     provider: state.config.provider,
     baseUrl: state.config.baseUrl,
     model: state.config.model,
+    requestFormat: llmRequestFormat(state),
     candidates: localResults.length,
   });
 
   const candidates = localResults.map((result) => result.item);
-  const raw = await callLlm(state, logger, query, candidates, (deltaText) => {
-    placeholder.content = deltaText || '🌊 正在接收流式响应……';
+  let sawStreamText = false;
+  let streamEvents = 0;
+  let latestReasoning = '';
+  const raw = await callLlm(state, logger, query, candidates, (snapshot) => {
+    const visible = splitVisibleStream(snapshot);
+    streamEvents = Math.max(streamEvents + 1, snapshot.events);
+    latestReasoning = visible.reasoning || latestReasoning;
+    if (visible.content) {
+      if (!sawStreamText) {
+        logger.write('info', 'LLM 流式首段已进入聊天界面', {
+          contentLength: visible.content.length,
+          reasoningLength: visible.reasoning.length,
+        });
+      }
+      sawStreamText = true;
+      updateStreamMessage(state, placeholder, visible, streamEvents, requestProfile);
+    } else {
+      if (streamEvents === 1) {
+        logger.write('info', 'LLM 流式连接已有进度，正在等待正式回答内容');
+      }
+      updateStreamMessage(state, placeholder, visible, streamEvents, requestProfile);
+    }
     render();
-  });
+  }, signal);
+  throwIfAborted(signal);
+  setAssistantStatus(placeholder, logger, render, '🧾 LLM 响应已返回，正在整理推荐结果……', {
+    rawLength: raw.length,
+    streamed: sawStreamText,
+    streamEvents,
+  }, requestProfile);
+
   const parsed = parseLlmJson(raw);
   logger.write(raw ? 'info' : 'warn', 'LLM 原始响应已返回', {
     length: raw.length,
@@ -55,7 +104,37 @@ export async function searchAndRespond(
   logger.write(parsed ? 'info' : 'warn', parsed ? 'LLM JSON 解析成功' : 'LLM JSON 解析失败，将降级显示原文', {
     hasParsed: Boolean(parsed),
   });
-  state.messages[state.messages.length - 1] = buildAssistantMessage(raw, parsed, candidates);
+  setAssistantStatus(placeholder, logger, render, parsed ? '🧩 JSON 解析成功，正在渲染推荐卡片……' : '📝 JSON 解析失败，正在切换为原文展示……', {
+    hasParsed: Boolean(parsed),
+  });
+
+  const finalMessage = buildAssistantMessage(raw, parsed, candidates);
+  if (state.config.chatDetail === 'chatty' && latestReasoning) {
+    finalMessage.reasoning = latestReasoning;
+    finalMessage.reasoningOpen = placeholder.reasoningOpen;
+  }
+  finalMessage.progress = `✅ LLM ${sawStreamText ? '流式' : '非流式'}响应完成 · ${streamEvents} 个片段 · ${requestProfile}`;
+  state.messages[state.messages.length - 1] = finalMessage;
+  logger.write('info', '推荐结果已渲染到聊天界面', {
+    cards: state.messages[state.messages.length - 1]?.cards?.length || 0,
+    notes: state.messages[state.messages.length - 1]?.notes?.length || 0,
+  });
+}
+
+export function handleSearchStopped(state: AppState, logger: Logger): void {
+  const last = state.messages[state.messages.length - 1];
+  if (last?.role === 'assistant') {
+    last.progress = '⏹️ 已停止当前请求。';
+    last.content = last.content || '已停止，没有更多输出。';
+  } else {
+    state.messages.push({
+      role: 'assistant',
+      content: '⏹️ 已停止当前请求。',
+      cards: [],
+    });
+  }
+  state.notice = '⏹️ 已停止当前请求。';
+  logger.write('warn', '用户停止当前请求');
 }
 
 export function clearCurrentChat(state: AppState, logger: Logger): void {
@@ -108,17 +187,104 @@ export function logSearchStart(state: AppState, logger: Logger, forceLocal: bool
   });
 }
 
-function pushLocalResults(
+function setAssistantStatus(
+  message: Message,
+  logger: Logger,
+  render: () => void,
+  content: string,
+  detail?: unknown,
+  progress?: string,
+): void {
+  message.progress = progress || '';
+  message.reasoning = '';
+  message.content = content;
+  logger.write('info', content, detail);
+  render();
+}
+
+function updateStreamMessage(
   state: AppState,
+  message: Message,
+  snapshot: LlmStreamSnapshot,
+  streamEvents: number,
+  requestProfile: string,
+): void {
+  const hasContent = Boolean(snapshot.content);
+  const hasReasoning = Boolean(snapshot.reasoning);
+  const progress = hasContent
+    ? `🧠 LLM 正在生成正式回答 · ${streamEvents} 个片段 · ${requestProfile}`
+    : `🧠 LLM thinking · ${streamEvents} 个片段 · ${requestProfile}`;
+
+  if (state.config.chatDetail === 'quiet') {
+    message.progress = `🧠 正在生成结果，完成后显示推荐卡片 · ${requestProfile}`;
+    message.reasoning = '';
+    message.content = '正在等待 LLM 完成推荐结果。';
+    return;
+  }
+
+  message.progress = progress;
+  message.reasoning = state.config.chatDetail === 'chatty' && hasReasoning ? snapshot.reasoning : '';
+  message.content = hasContent
+    ? snapshot.content
+    : hasReasoning && state.config.chatDetail === 'normal'
+      ? '正在思考，尚未开始输出正式回答。'
+    : '正在等待模型首段正式回答。';
+}
+
+function splitVisibleStream(snapshot: LlmStreamSnapshot): LlmStreamSnapshot {
+  const content = snapshot.content || '';
+  const jsonStart = findJsonStart(content);
+  if (jsonStart > 0) {
+    return {
+      ...snapshot,
+      content: content.slice(jsonStart),
+      reasoning: joinReasoning(snapshot.reasoning, content.slice(0, jsonStart)),
+    };
+  }
+  if (jsonStart < 0 && !snapshot.reasoning && content.trim()) {
+    return { ...snapshot, content: '', reasoning: content };
+  }
+  return snapshot;
+}
+
+function findJsonStart(text: string): number {
+  const trimmedStart = text.search(/\S/);
+  if (trimmedStart < 0) return -1;
+  if (text[trimmedStart] === '{') return trimmedStart;
+  const fenced = text.indexOf('```json');
+  const fromFence = fenced >= 0 ? text.indexOf('{', fenced) : -1;
+  const firstBrace = text.indexOf('{');
+  if (fromFence >= 0) return fromFence;
+  return firstBrace;
+}
+
+function joinReasoning(first: string, second: string): string {
+  return [first, second].map((item) => item.trim()).filter(Boolean).join('\n\n');
+}
+
+function buildLlmRequestProfile(state: AppState): string {
+  const transport = state.config.stream ? 'stream preferred' : 'non-stream';
+  return `模型 ${state.config.model} · 请求 ${llmRequestFormat(state)} · ${transport}`;
+}
+
+function llmRequestFormat(state: AppState): string {
+  return state.config.provider === 'anthropic'
+    ? 'Anthropic Messages /v1/messages'
+    : 'OpenAI Chat Completions /chat/completions';
+}
+
+function fillLocalResults(
+  message: Message,
   logger: Logger,
   forceLocal: boolean,
   cards: PluginSummary[],
 ): void {
   const reason = forceLocal ? '🧭 已按你的要求只使用本地增强搜索。' : '🔑 未配置 API key，先显示本地增强搜索结果。';
   logger.write('info', forceLocal ? '跳过 LLM：用户选择本地搜索' : '跳过 LLM：未配置 API key');
-  state.messages.push({
-    role: 'assistant',
-    content: `${reason}\n这些结果来自 registry 元数据、关键词、分类、下载量、评分和认证状态的综合排序。`,
-    cards,
-  });
+  message.content = `${reason}\n这些结果来自 registry 元数据、关键词、分类、下载量、评分和认证状态的综合排序。`;
+  message.cards = cards;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException('请求已取消', 'AbortError');
 }

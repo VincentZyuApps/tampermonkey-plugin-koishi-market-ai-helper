@@ -31,7 +31,7 @@ export function welcomeMessage(): Message {
 
 export function saveHistoryIfNeeded(config: Config, messages: Message[]): void {
   if (config.saveHistory) {
-    gmSet(STORAGE_KEYS.history, messages.slice(-30));
+    gmSet(STORAGE_KEYS.history, messages.slice(-30).map(stripRuntimeMessageState));
   } else {
     gmDelete(STORAGE_KEYS.history);
   }
@@ -51,4 +51,10 @@ export function defaultModelFor(provider: Config['provider']): string {
 
 export function providerLabel(provider: Config['provider']): string {
   return provider === 'anthropic' ? 'Anthropic' : 'OpenAI-compatible';
+}
+
+function stripRuntimeMessageState(message: Message): Message {
+  const next = { ...message };
+  delete next.reasoningOpen;
+  return next;
 }

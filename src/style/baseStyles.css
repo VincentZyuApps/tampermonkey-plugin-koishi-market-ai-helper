@@ -29,6 +29,7 @@
     background: var(--kmh-brand);
     box-shadow: var(--kmh-shadow), var(--kmh-inner-highlight), var(--kmh-inner-press);
     cursor: pointer;
+    animation: kmh-bubble-enter 180ms cubic-bezier(.22, 1, .36, 1) both;
   }
   .kmh-bubble-mark {
     display: inline-flex;
@@ -42,10 +43,49 @@
   .kmh-stack {
     position: fixed;
     right: 22px;
+    top: 22px;
     bottom: 22px;
-    z-index: 2147483647;
+    z-index: 2147483645;
     width: 380px;
-    height: 560px;
+    height: auto;
     max-width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
+    max-height: none;
+    transform-origin: right bottom;
+  }
+  .kmh-stack.kmh-stack-enter {
+    animation: kmh-panel-enter 220ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+  .kmh-stack.kmh-stack-leave {
+    pointer-events: none;
+    animation: kmh-panel-leave 160ms ease-in both;
+  }
+  @keyframes kmh-panel-enter {
+    from {
+      opacity: 0;
+      transform: translateY(18px) scale(.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes kmh-panel-leave {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(18px) scale(.985);
+    }
+  }
+  @keyframes kmh-bubble-enter {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(.92);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }

@@ -12,6 +12,8 @@ export function readSettingsFromForm(shadow: ShadowRoot, config: Config): Config
     persistApiKey: getChecked(shadow, 'persistApiKey'),
     saveHistory: getChecked(shadow, 'saveHistory'),
     stream: getChecked(shadow, 'stream'),
+    chatDetail: readChatDetail(getInputValue(shadow, 'chatDetail')),
+    logLevel: readLogLevel(getInputValue(shadow, 'logLevel')),
     recallLimit: clampRecallLimit(
       Number.parseInt(getInputValue(shadow, 'recallLimit') || String(DEFAULT_CONFIG.recallLimit), 10),
     ),
@@ -44,6 +46,16 @@ function getChecked(shadow: ShadowRoot, name: string): boolean {
 
 function normalizeBaseUrl(value: string): string {
   return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function readChatDetail(value: string): Config['chatDetail'] {
+  if (value === 'normal' || value === 'quiet') return value;
+  return 'chatty';
+}
+
+function readLogLevel(value: string): Config['logLevel'] {
+  if (value === 'error' || value === 'warn' || value === 'debug' || value === 'trace') return value;
+  return 'info';
 }
 
 function clampNumber(value: number, min: number, max: number, fallback: number): number {

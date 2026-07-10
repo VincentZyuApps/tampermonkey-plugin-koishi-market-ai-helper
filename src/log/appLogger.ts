@@ -6,6 +6,8 @@ export class Logger {
 
   write(level: LogLevel, message: string, detail?: unknown): void {
     const state = this.getState();
+    if (!shouldKeepLog(level, state.config.logLevel)) return;
+
     const entry = {
       level,
       message,
@@ -15,11 +17,23 @@ export class Logger {
     state.logs.push(entry);
     if (state.logs.length > 120) state.logs.splice(0, state.logs.length - 120);
 
-    const method = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
+    const method = level === 'error' ? 'error' : level === 'warn' ? 'warn' : level === 'debug' ? 'debug' : 'log';
     console[method](APP_LOG_PREFIX, message, detail === undefined ? '' : sanitizeLogValue(detail));
 
     if (!state.collapsed && !state.busy) this.render();
   }
+}
+
+function shouldKeepLog(level: LogLevel, configured: LogLevel): boolean {
+  return logRank(level) <= logRank(configured);
+}
+
+function logRank(level: LogLevel): number {
+  if (level === 'error') return 0;
+  if (level === 'warn') return 1;
+  if (level === 'info') return 2;
+  if (level === 'debug') return 3;
+  return 4;
 }
 
 function sanitizeLogValue(value: unknown, depth = 0): unknown {

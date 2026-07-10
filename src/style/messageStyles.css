@@ -1,6 +1,65 @@
   .kmh-messages { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
   .kmh-message { margin-bottom: 12px; }
   .kmh-message-role { margin-bottom: 4px; font-size: 12px; color: var(--kmh-muted); }
+  .kmh-message-progress {
+    margin: 0 0 5px;
+    color: var(--kmh-muted);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .kmh-reasoning {
+    margin: 0 0 6px;
+  }
+  .kmh-reasoning-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 26px;
+    padding: 0 8px;
+    border: 1px solid color-mix(in srgb, var(--kmh-border) 72%, transparent);
+    border-radius: 8px 8px 0 0;
+    color: color-mix(in srgb, var(--kmh-muted) 88%, CanvasText);
+    background: color-mix(in srgb, Canvas 90%, var(--kmh-brand-soft));
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .kmh-reasoning-head:hover {
+    border-color: color-mix(in srgb, var(--kmh-brand) 38%, var(--kmh-border));
+  }
+  .kmh-message-reasoning {
+    position: relative;
+    overflow: auto;
+    padding: 7px 9px;
+    border: 1px dashed color-mix(in srgb, var(--kmh-border) 78%, transparent);
+    border-top: 0;
+    border-radius: 8px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    color: color-mix(in srgb, var(--kmh-muted) 82%, CanvasText);
+    background: color-mix(in srgb, Canvas 88%, var(--kmh-brand-soft));
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: normal;
+  }
+  .kmh-message-reasoning.kmh-reasoning-collapsed {
+    max-height: calc(1.45em * 5 + 14px);
+    overflow: hidden;
+  }
+  .kmh-message-reasoning.kmh-reasoning-collapsed::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 28px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, Canvas 94%, var(--kmh-brand-soft)));
+  }
+  .kmh-message-reasoning.kmh-reasoning-open {
+    max-height: 280px;
+    overflow: auto;
+  }
   .kmh-message-content {
     padding: 9px 10px;
     border: 1px solid var(--kmh-border);

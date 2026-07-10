@@ -1,24 +1,32 @@
 import { APP_ID, APP_SHORT_NAME } from './appMeta';
 import { updateAboutPanel, updateBackPanel } from '../ui/backPanel';
-import { clearAllHistory, clearCurrentChat, handleSearchError, logSearchStart, searchAndRespond } from './chatFlow';
+import { clearAllHistory, clearCurrentChat, handleSearchError, handleSearchStopped, logSearchStart, searchAndRespond } from './chatFlow';
 import { STORAGE_KEYS } from './appConstants';
 import { clearStoredHistory, getApiKey, saveConfig, saveHistoryIfNeeded } from './appConfig';
-import { gmDelete, gmGet, gmRegisterMenu, gmSet } from '../platform/gmBridge';
+import { gmDelete, gmGet, gmRegisterMenu, gmSet, isAbortError } from '../platform/gmBridge';
 import { readCssVar } from '../shared/htmlUtils';
 import { Logger } from '../log/appLogger';
 import { bindLogPanel } from '../log/logPanel';
 import { applySearchToCurrentPage, copyText, isMarketPath, openMarketSearch } from '../market/pageActions';
-import { renderBubble, renderPanel } from '../ui/panelRender';
+import { renderBubble, renderMessages, renderPanel } from '../ui/panelRender';
 import { getInputValue, readSettingsFromForm } from '../ui/settingsForm';
 import { createInitialState } from './appState';
 import { styles } from '../style/styleSheet';
 import type { AppState, SendMode } from '../types/appTypes';
+
+interface ScrollState {
+  top: number;
+  nearBottom: boolean;
+}
 
 export class KoishiMarketAiHelper {
   private readonly root: HTMLDivElement;
   private readonly shadow: ShadowRoot;
   private readonly state: AppState;
   private readonly logger: Logger;
+  private panelEnterNext = false;
+  private streamingRenderTimer = 0;
+  private activeAbortController: AbortController | null = null;
 
   constructor() {
     this.state = this.createState();
@@ -28,6 +36,7 @@ export class KoishiMarketAiHelper {
     this.shadow = this.root.attachShadow({ mode: 'open' });
     this.applyThemeVars();
     this.logger = new Logger(() => this.state, () => this.render());
+    document.addEventListener('keydown', (event) => this.handleGlobalKeydown(event), true);
   }
 
   start(): void {
@@ -77,23 +86,48 @@ export class KoishiMarketAiHelper {
       this.shadow.innerHTML = '';
       return;
     }
+    const scrollState = this.readMessagesScrollState();
     const apiKey = getApiKey(this.state.config, this.state.sessionApiKey);
-    const html = this.state.collapsed ? renderBubble() : renderPanel(this.state, apiKey);
+    const shouldAnimatePanelEnter = this.panelEnterNext && !this.state.collapsed;
+    this.panelEnterNext = false;
+    const html = this.state.collapsed ? renderBubble() : renderPanel(this.state, apiKey, shouldAnimatePanelEnter);
     this.shadow.innerHTML = `<style>${styles()}</style>${html}`;
     this.bindEvents();
-    this.scrollMessagesToBottom();
+    this.restoreMessagesScroll(scrollState);
+  }
+
+  private renderStreaming(): void {
+    if (this.streamingRenderTimer) return;
+    this.streamingRenderTimer = window.setTimeout(() => {
+      this.streamingRenderTimer = 0;
+      this.renderMessagesOnly();
+    }, 100);
+  }
+
+  private renderMessagesOnly(): void {
+    const box = this.shadow.querySelector<HTMLElement>('[data-role="messages"]');
+    if (!box || this.state.collapsed || this.state.closedForPage) {
+      this.render();
+      return;
+    }
+
+    const scrollState = this.readMessagesScrollState();
+    const reasoningScrollState = this.readReasoningScrollStates();
+    box.innerHTML = renderMessages(this.state.messages);
+    this.bindReasoningActions();
+    this.restoreReasoningScrollStates(reasoningScrollState);
+    this.restoreMessagesScroll(scrollState);
   }
 
   private bindEvents(): void {
     this.on('[data-action="expand"]', () => {
+      this.panelEnterNext = true;
       this.state.collapsed = false;
       gmSet(STORAGE_KEYS.collapsed, false);
       this.render();
     });
     this.on('[data-action="collapse"]', () => {
-      this.state.collapsed = true;
-      gmSet(STORAGE_KEYS.collapsed, true);
-      this.render();
+      this.collapseWithAnimation();
     });
     this.on('[data-action="close-page"]', () => {
       this.state.closedForPage = true;
@@ -114,7 +148,13 @@ export class KoishiMarketAiHelper {
     bindLogPanel(this.shadow, this.state, this.logger, () => this.render());
     this.on('[data-action="clear-current-chat"]', () => this.clearCurrentChat());
     this.on('[data-action="clear-all-history"]', () => this.clearAllHistory());
-    this.on('[data-action="send"]', () => void this.handleSubmit(false));
+    this.on('[data-action="send"]', () => {
+      if (this.state.busy) {
+        this.stopCurrentSearch();
+      } else {
+        void this.handleSubmit(false);
+      }
+    });
     this.on('[data-action="local-search"]', () => void this.handleSubmit(true));
     this.on('[data-action="save-settings"]', () => this.saveSettingsFromForm());
     this.on('[data-action="disable-host"]', () => this.disableCurrentHost());
@@ -122,6 +162,7 @@ export class KoishiMarketAiHelper {
     this.bindInputHotkey();
     this.bindSendMode();
     this.bindCardActions();
+    this.bindReasoningActions();
   }
 
   private on(selector: string, handler: () => void): void {
@@ -166,6 +207,18 @@ export class KoishiMarketAiHelper {
     });
   }
 
+  private bindReasoningActions(): void {
+    this.shadow.querySelectorAll<HTMLElement>('[data-action="toggle-reasoning"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number.parseInt(button.getAttribute('data-message-index') || '', 10);
+        const message = Number.isFinite(index) ? this.state.messages[index] : null;
+        if (!message?.reasoning) return;
+        message.reasoningOpen = !message.reasoningOpen;
+        this.render();
+      });
+    });
+  }
+
   private clearCurrentChat(): void {
     clearCurrentChat(this.state, this.logger);
     this.render();
@@ -174,6 +227,22 @@ export class KoishiMarketAiHelper {
   private clearAllHistory(): void {
     clearAllHistory(this.state, this.logger);
     this.render();
+  }
+
+  private collapseWithAnimation(): void {
+    const stack = this.shadow.querySelector<HTMLElement>('.kmh-stack');
+    if (!stack) {
+      this.state.collapsed = true;
+      gmSet(STORAGE_KEYS.collapsed, true);
+      this.render();
+      return;
+    }
+    stack.classList.add('kmh-stack-leave');
+    window.setTimeout(() => {
+      this.state.collapsed = true;
+      gmSet(STORAGE_KEYS.collapsed, true);
+      this.render();
+    }, 170);
   }
 
   private async handleSubmit(forceLocal: boolean): Promise<void> {
@@ -185,20 +254,42 @@ export class KoishiMarketAiHelper {
     if (input) input.value = '';
     this.state.notice = '';
     this.state.busy = true;
+    const abortController = new AbortController();
+    this.activeAbortController = abortController;
     logSearchStart(this.state, this.logger, forceLocal, query);
     this.state.messages.push({ role: 'user', content: query, cards: [] });
     saveHistoryIfNeeded(this.state.config, this.state.messages);
     this.render();
 
     try {
-      await searchAndRespond(this.state, this.logger, query, forceLocal, () => this.render());
+      await searchAndRespond(this.state, this.logger, query, forceLocal, () => this.renderStreaming(), abortController.signal);
     } catch (error) {
-      handleSearchError(this.state, this.logger, error);
+      if (abortController.signal.aborted || isAbortError(error)) {
+        handleSearchStopped(this.state, this.logger);
+      } else {
+        handleSearchError(this.state, this.logger, error);
+      }
     } finally {
+      if (this.activeAbortController === abortController) this.activeAbortController = null;
       this.state.busy = false;
       saveHistoryIfNeeded(this.state.config, this.state.messages);
       this.render();
     }
+  }
+
+  private stopCurrentSearch(): void {
+    if (!this.state.busy || !this.activeAbortController || this.activeAbortController.signal.aborted) return;
+    this.activeAbortController.abort();
+    this.state.notice = '⏹️ 正在停止当前请求……';
+    this.logger.write('warn', '用户请求停止当前搜索');
+    this.render();
+  }
+
+  private handleGlobalKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !this.state.busy) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.stopCurrentSearch();
   }
 
   private saveSettingsFromForm(): void {
@@ -243,10 +334,33 @@ export class KoishiMarketAiHelper {
     this.render();
   }
 
-  private scrollMessagesToBottom(): void {
-    requestAnimationFrame(() => {
-      const box = this.shadow.querySelector<HTMLElement>('[data-role="messages"]');
-      if (box) box.scrollTop = box.scrollHeight;
+  private readMessagesScrollState(): ScrollState | null {
+    const box = this.shadow.querySelector<HTMLElement>('[data-role="messages"]');
+    if (!box) return null;
+    return readScrollState(box, 36);
+  }
+
+  private restoreMessagesScroll(state: ScrollState | null): void {
+    const box = this.shadow.querySelector<HTMLElement>('[data-role="messages"]');
+    if (!box) return;
+    restoreScrollState(box, state);
+  }
+
+  private readReasoningScrollStates(): Map<string, ScrollState> {
+    const states = new Map<string, ScrollState>();
+    this.shadow.querySelectorAll<HTMLElement>('[data-role="reasoning-body"]').forEach((element) => {
+      const index = element.getAttribute('data-message-index');
+      if (!index) return;
+      states.set(index, readScrollState(element, 24));
+    });
+    return states;
+  }
+
+  private restoreReasoningScrollStates(states: Map<string, ScrollState>): void {
+    this.shadow.querySelectorAll<HTMLElement>('[data-role="reasoning-body"]').forEach((element) => {
+      const index = element.getAttribute('data-message-index');
+      if (!index) return;
+      restoreScrollState(element, states.get(index) || null);
     });
   }
 }
@@ -264,4 +378,19 @@ function insertTextAreaNewline(input: HTMLTextAreaElement): void {
   const end = input.selectionEnd;
   input.setRangeText('\n', start, end, 'end');
   input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function readScrollState(element: HTMLElement, threshold: number): ScrollState {
+  return {
+    top: element.scrollTop,
+    nearBottom: element.scrollHeight - element.scrollTop - element.clientHeight < threshold,
+  };
+}
+
+function restoreScrollState(element: HTMLElement, state: ScrollState | null): void {
+  if (!state || state.nearBottom) {
+    element.scrollTop = element.scrollHeight;
+  } else {
+    element.scrollTop = state.top;
+  }
 }

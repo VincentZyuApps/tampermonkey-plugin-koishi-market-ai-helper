@@ -11,12 +11,13 @@ declare const GM_xmlhttpRequest:
       url: string;
       headers?: Record<string, string>;
       data?: string;
-      responseType?: 'text';
+      responseType?: 'text' | 'stream';
+      onloadstart?: (response: { status?: number; response?: unknown }) => void;
       onprogress?: (response: { responseText?: string }) => void;
       onload?: (response: { status: number; responseText?: string }) => void;
-      onerror?: () => void;
+      onerror?: (error?: unknown) => void;
       ontimeout?: () => void;
-    }) => void)
+    }) => { abort?: () => void } | void)
   | undefined;
 
 export interface RequestOptions {
@@ -24,10 +25,11 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   data?: string;
   onProgressText?: (text: string) => void;
+  signal?: AbortSignal;
 }
 
 export type RequestLogger = (
-  level: 'info' | 'warn' | 'error',
+  level: 'error' | 'warn' | 'info' | 'debug' | 'trace',
   message: string,
   detail?: unknown,
 ) => void;
@@ -74,6 +76,207 @@ export function gmJson<T>(url: string, options: RequestOptions = {}, logger?: Re
   return gmText(url, options, logger).then((text) => JSON.parse(text) as T);
 }
 
+export function gmTextReadableStream(
+  url: string,
+  options: RequestOptions = {},
+  logger?: RequestLogger,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (typeof GM_xmlhttpRequest !== 'function') {
+      reject(new Error('GM_xmlhttpRequest 不可用'));
+      return;
+    }
+
+    const method = options.method || 'GET';
+    let started = false;
+    let settled = false;
+    let text = '';
+
+    if (options.signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+
+    logger?.('info', 'GM stream 请求开始', { method, url });
+    const request = GM_xmlhttpRequest({
+      method,
+      url,
+      headers: options.headers || {},
+      data: options.data,
+      responseType: 'stream',
+      onloadstart(response) {
+        started = true;
+        void readUnknownStream(response.response, {
+          method,
+          url,
+          signal: options.signal,
+          onChunk(chunkText, chunks) {
+            if (settled) return;
+            text += chunkText;
+            logger?.('trace', 'GM stream chunk', {
+              method,
+              url,
+              chunks,
+              chunkLength: chunkText.length,
+              responseLength: text.length,
+            });
+            options.onProgressText?.(text);
+          },
+        }).then(() => {
+          if (settled) return;
+          settled = true;
+          logger?.('info', 'GM stream 请求完成', { method, url, responseLength: text.length });
+          resolve(text);
+        }).catch((error) => {
+          if (settled) return;
+          settled = true;
+          logger?.('warn', 'GM stream 读取失败', {
+            method,
+            url,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          reject(error);
+        });
+      },
+      onload(response) {
+        if (settled) return;
+        if (!started) {
+          settled = true;
+          reject(new Error(`GM stream 未提供可读取流，HTTP ${response.status}`));
+        }
+      },
+      onerror(error) {
+        if (settled) return;
+        settled = true;
+        logger?.('error', 'GM stream 请求失败', { method, url, error: String(error || '') });
+        reject(new Error(`GM stream 请求失败：${url}`));
+      },
+      ontimeout() {
+        if (settled) return;
+        settled = true;
+        logger?.('error', 'GM stream 请求超时', { method, url });
+        reject(new Error(`GM stream 请求超时：${url}`));
+      },
+    });
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      request?.abort?.();
+      logger?.('warn', 'GM stream 请求已取消', { method, url, responseLength: text.length });
+      reject(abortError());
+    };
+    options.signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+export async function fetchTextStream(
+  url: string,
+  options: RequestOptions = {},
+  logger?: RequestLogger,
+): Promise<string> {
+  const method = options.method || 'GET';
+  logger?.('info', 'Fetch 流式请求开始', { method, url });
+
+  const response = await fetch(url, {
+    method,
+    headers: options.headers || {},
+    body: options.data,
+    cache: 'no-store',
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 1000);
+    logger?.('error', 'Fetch 流式请求返回错误状态', { method, url, status: response.status, body });
+    throw new Error(`HTTP ${response.status}: ${body.slice(0, 500)}`);
+  }
+
+  if (!response.body) {
+    const text = await response.text();
+    options.onProgressText?.(text);
+    logger?.('info', 'Fetch 响应无 ReadableStream，已读取完整文本', {
+      method,
+      url,
+      responseLength: text.length,
+    });
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let chunks = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (options.signal?.aborted) throw abortError();
+    chunks += 1;
+    text += decoder.decode(value, { stream: true });
+    logger?.('trace', 'Fetch 流式 chunk', {
+      method,
+      url,
+      chunks,
+      chunkBytes: value.byteLength,
+      responseLength: text.length,
+    });
+    options.onProgressText?.(text);
+  }
+
+  const tail = decoder.decode();
+  if (tail) {
+    text += tail;
+    options.onProgressText?.(text);
+  }
+
+  logger?.('info', 'Fetch 流式请求完成', {
+    method,
+    url,
+    chunks,
+    responseLength: text.length,
+  });
+  return text;
+}
+
+async function readUnknownStream(
+  stream: unknown,
+  context: {
+    method: string;
+    url: string;
+    signal?: AbortSignal;
+    onChunk: (text: string, chunks: number) => void;
+  },
+): Promise<void> {
+  if (!stream || typeof (stream as ReadableStream<Uint8Array>).getReader !== 'function') {
+    throw new Error('GM response.response 不是 ReadableStream');
+  }
+
+  const reader = (stream as ReadableStream<unknown>).getReader();
+  const decoder = new TextDecoder();
+  let chunks = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (context.signal?.aborted) throw abortError();
+    chunks += 1;
+    context.onChunk(decodeStreamChunk(value, decoder), chunks);
+  }
+
+  const tail = decoder.decode();
+  if (tail) context.onChunk(tail, chunks + 1);
+}
+
+function decodeStreamChunk(value: unknown, decoder: TextDecoder): string {
+  if (typeof value === 'string') return value;
+  if (value instanceof Uint8Array) return decoder.decode(value, { stream: true });
+  if (value instanceof ArrayBuffer) return decoder.decode(value, { stream: true });
+  if (ArrayBuffer.isView(value)) {
+    const view = value as ArrayBufferView;
+    return decoder.decode(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), { stream: true });
+  }
+  return String(value ?? '');
+}
+
 export function gmText(
   url: string,
   options: RequestOptions = {},
@@ -85,17 +288,31 @@ export function gmText(
       return;
     }
 
+    if (options.signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+
     logger?.('info', 'HTTP 请求开始', { method: options.method || 'GET', url });
-    GM_xmlhttpRequest({
+    let settled = false;
+    const request = GM_xmlhttpRequest({
       method: options.method || 'GET',
       url,
       headers: options.headers || {},
       data: options.data,
       responseType: 'text',
       onprogress(response) {
+        if (settled) return;
+        logger?.('trace', 'GM 请求进度事件', {
+          method: options.method || 'GET',
+          url,
+          responseLength: (response.responseText || '').length,
+        });
         options.onProgressText?.(response.responseText || '');
       },
       onload(response) {
+        if (settled) return;
+        settled = true;
         if (response.status >= 200 && response.status < 300) {
           logger?.('info', 'HTTP 请求成功', {
             method: options.method || 'GET',
@@ -117,13 +334,33 @@ export function gmText(
         reject(new Error(`HTTP ${response.status}: ${(response.responseText || '').slice(0, 500)}`));
       },
       onerror() {
+        if (settled) return;
+        settled = true;
         logger?.('error', 'HTTP 请求失败', { method: options.method || 'GET', url });
         reject(new Error(`请求失败：${url}`));
       },
       ontimeout() {
+        if (settled) return;
+        settled = true;
         logger?.('error', 'HTTP 请求超时', { method: options.method || 'GET', url });
         reject(new Error(`请求超时：${url}`));
       },
     });
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      request?.abort?.();
+      logger?.('warn', 'HTTP 请求已取消', { method: options.method || 'GET', url });
+      reject(abortError());
+    };
+    options.signal?.addEventListener('abort', abort, { once: true });
   });
+}
+
+export function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function abortError(): DOMException {
+  return new DOMException('请求已取消', 'AbortError');
 }
