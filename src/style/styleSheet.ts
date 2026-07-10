@@ -1,10 +1,10 @@
-import { baseStyles } from './baseStyles';
-import { composeStyles } from './composeStyles';
-import { logStyles } from './logStyles';
-import { messageStyles } from './messageStyles';
-import { mobileStyles } from './mobileStyles';
-import { panelStyles } from './panelStyles';
-import { settingsStyles } from './settingsStyles';
+import baseStyles from './baseStyles.css?raw';
+import composeStyles from './composeStyles.css?raw';
+import logStyles from './logStyles.css?raw';
+import messageStyles from './messageStyles.css?raw';
+import mobileStyles from './mobileStyles.css?raw';
+import panelStyles from './panelStyles.css?raw';
+import settingsStyles from './settingsStyles.css?raw';
 
 export function styles(): string {
   return [

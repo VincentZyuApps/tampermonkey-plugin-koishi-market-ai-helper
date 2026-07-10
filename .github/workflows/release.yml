@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'action: check/build only; release: GitHub Release only; publish: GitHub Pages only.'
+        description: 'action: check/build only; release: GitHub Release; publish: GitHub Release + Pages.'
         required: false
         default: action
         type: choice
@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  select-mode:
+  check-commit:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.mode.outputs.should_run }}
@@ -127,8 +127,8 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   build-dist:
-    needs: select-mode
-    if: needs.select-mode.outputs.should_run == 'true'
+    needs: check-commit
+    if: needs.check-commit.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     outputs:
       userscript_name: tampermonkey-plugin-koishi-market-ai-helper.user.js
@@ -195,9 +195,9 @@ jobs:
 
   publish-release:
     needs:
-      - select-mode
+      - check-commit
       - build-dist
-    if: needs.select-mode.outputs.mode == 'release'
+    if: needs.check-commit.outputs.mode == 'release' || needs.check-commit.outputs.mode == 'publish'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -212,10 +212,10 @@ jobs:
       - name: Render release template
         env:
           REPO: ${{ github.repository }}
-          VERSION: ${{ needs.select-mode.outputs.version }}
-          RELEASE_TAG: ${{ needs.select-mode.outputs.tag }}
-          TRIGGER_WORD: ${{ needs.select-mode.outputs.trigger_word }}
-          COMMITS_LOG: ${{ needs.select-mode.outputs.commits_log }}
+          VERSION: ${{ needs.check-commit.outputs.version }}
+          RELEASE_TAG: ${{ needs.check-commit.outputs.tag }}
+          TRIGGER_WORD: ${{ needs.check-commit.outputs.trigger_word }}
+          COMMITS_LOG: ${{ needs.check-commit.outputs.commits_log }}
         run: |
           set -euo pipefail
           cat > build_info.md <<EOF
@@ -250,7 +250,7 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.select-mode.outputs.tag }}
+          RELEASE_TAG: ${{ needs.check-commit.outputs.tag }}
         run: |
           set -euo pipefail
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
@@ -265,10 +265,12 @@ jobs:
 
   publish-pages:
     needs:
-      - select-mode
+      - check-commit
       - build-dist
-    if: needs.select-mode.outputs.mode == 'publish'
+    if: needs.check-commit.outputs.mode == 'publish'
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -290,3 +292,72 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  notify-greasyfork:
+    needs:
+      - check-commit
+      - publish-release
+      - publish-pages
+    if: needs.check-commit.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    env:
+      GREASYFORK_WEBHOOK_URL: ${{ secrets.GREASYFORK_WEBHOOK_URL }}
+      RELEASE_TAG: ${{ needs.check-commit.outputs.tag }}
+      VERSION: ${{ needs.check-commit.outputs.version }}
+    steps:
+      - name: Skip Greasy Fork notification
+        if: env.GREASYFORK_WEBHOOK_URL == ''
+        run: |
+          echo "GREASYFORK_WEBHOOK_URL is not configured. Skipping Greasy Fork webhook notification."
+
+      - name: Notify Greasy Fork webhook
+        if: env.GREASYFORK_WEBHOOK_URL != ''
+        env:
+          REPO: ${{ github.repository }}
+          PAGES_URL: ${{ needs.publish-pages.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          repo = os.environ["REPO"]
+          pages_url = os.environ.get("PAGES_URL", "")
+          if pages_url and not pages_url.endswith("/"):
+              pages_url += "/"
+
+          payload = {
+              "action": "published",
+              "ref": os.environ["GITHUB_REF"],
+              "after": os.environ["GITHUB_SHA"],
+              "repository": {
+                  "full_name": repo,
+                  "html_url": f"https://github.com/{repo}",
+              },
+              "release": {
+                  "tag_name": os.environ["RELEASE_TAG"],
+                  "html_url": f"https://github.com/{repo}/releases/tag/{os.environ['RELEASE_TAG']}",
+              },
+              "pages": {
+                  "url": pages_url,
+                  "userscript_url": f"{pages_url}tampermonkey-plugin-koishi-market-ai-helper.user.js" if pages_url else "",
+              },
+              "userscript": {
+                  "name": "tampermonkey-plugin-koishi-market-ai-helper.user.js",
+                  "version": os.environ["VERSION"],
+              },
+          }
+          Path("greasyfork_webhook_payload.json").write_text(
+              json.dumps(payload, ensure_ascii=False),
+              encoding="utf-8",
+          )
+          PY
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Event: release" \
+            --header "X-GitHub-Delivery: ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --data @greasyfork_webhook_payload.json \
+            "${GREASYFORK_WEBHOOK_URL}"

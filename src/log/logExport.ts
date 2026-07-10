@@ -3,7 +3,7 @@ import type { LogEntry } from '../types/appTypes';
 
 export function buildLogExportText(logs: LogEntry[], limit: number): string {
   const maxChars = normalizeLogLimit(limit);
-  if (!logs.length) return '暂无日志。'.slice(0, maxChars);
+  if (!logs.length) return '📭 暂无日志。'.slice(0, maxChars);
 
   const chunks: string[] = [];
   let used = 0;

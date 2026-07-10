@@ -1,4 +1,3 @@
-export const panelStyles = `
   .kmh-panel {
     position: absolute;
     inset: 0;
@@ -123,4 +122,3 @@ export const panelStyles = `
     line-height: 1.55;
   }
   .kmh-about-list li + li { margin-top: 4px; }
-`;

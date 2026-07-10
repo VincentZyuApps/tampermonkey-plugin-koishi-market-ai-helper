@@ -1,4 +1,3 @@
-export const logStyles = `
   .kmh-log {
     position: fixed;
     right: 390px;
@@ -120,4 +119,3 @@ export const logStyles = `
     overflow-wrap: anywhere;
   }
   .kmh-log-empty { color: var(--kmh-muted); font-size: 12px; }
-`;

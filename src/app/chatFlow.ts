@@ -32,7 +32,7 @@ export async function searchAndRespond(
     return;
   }
 
-  const placeholder = { role: 'assistant' as const, content: '正在召回插件并请求 LLM 重排……', cards: [] };
+  const placeholder = { role: 'assistant' as const, content: '🔍 正在召回插件并请求 LLM 重排……', cards: [] };
   state.messages.push(placeholder);
   render();
   logger.write('info', '开始请求 LLM', {
@@ -44,7 +44,7 @@ export async function searchAndRespond(
 
   const candidates = localResults.map((result) => result.item);
   const raw = await callLlm(state, logger, query, candidates, (deltaText) => {
-    placeholder.content = deltaText || '正在接收流式响应……';
+    placeholder.content = deltaText || '🌊 正在接收流式响应……';
     render();
   });
   const parsed = parseLlmJson(raw);
@@ -61,11 +61,11 @@ export async function searchAndRespond(
 export function clearCurrentChat(state: AppState, logger: Logger): void {
   state.messages = [{
     role: 'assistant',
-    content: '当前界面对话已清空，已保存的历史没有被删除。刷新页面后，如果开启了保存历史，旧历史仍可能恢复。',
+    content: '🧹 当前界面对话已清空，已保存的历史没有被删除。刷新页面后，如果开启了保存历史，旧历史仍可能恢复。',
     cards: [],
   }];
   state.lastLocalResults = [];
-  state.notice = '已清空当前界面对话。';
+  state.notice = '🧹 已清空当前界面对话。';
   logger.write('info', '清空当前界面对话', {
     persistentHistoryUntouched: true,
     saveHistory: state.config.saveHistory,
@@ -75,12 +75,12 @@ export function clearCurrentChat(state: AppState, logger: Logger): void {
 export function clearAllHistory(state: AppState, logger: Logger): void {
   state.messages = [{
     role: 'assistant',
-    content: '当前对话和 Tampermonkey 中保存的聊天历史都已清空。你可以继续输入插件需求。',
+    content: '🗑️ 当前对话和 Tampermonkey 中保存的聊天历史都已清空。你可以继续输入插件需求。',
     cards: [],
   }];
   state.lastLocalResults = [];
   clearStoredHistory();
-  state.notice = '已清空所有聊天历史。';
+  state.notice = '🗑️ 已清空所有聊天历史。';
   logger.write('info', '清空所有聊天历史', { storageKey: STORAGE_KEYS.history });
 }
 
@@ -92,7 +92,7 @@ export function handleSearchError(state: AppState, logger: Logger, error: unknow
   });
   state.messages.push({
     role: 'assistant',
-    content: `处理失败：${message}\n如果是 API 或网络问题，可以先使用本地增强搜索结果。`,
+    content: `⚠️ 处理失败：${message}\n如果是 API 或网络问题，可以先使用本地增强搜索结果。`,
     cards: state.lastLocalResults.map((result) => result.item),
   });
 }
@@ -114,7 +114,7 @@ function pushLocalResults(
   forceLocal: boolean,
   cards: PluginSummary[],
 ): void {
-  const reason = forceLocal ? '已按你的要求只使用本地增强搜索。' : '未配置 API key，先显示本地增强搜索结果。';
+  const reason = forceLocal ? '🧭 已按你的要求只使用本地增强搜索。' : '🔑 未配置 API key，先显示本地增强搜索结果。';
   logger.write('info', forceLocal ? '跳过 LLM：用户选择本地搜索' : '跳过 LLM：未配置 API key');
   state.messages.push({
     role: 'assistant',

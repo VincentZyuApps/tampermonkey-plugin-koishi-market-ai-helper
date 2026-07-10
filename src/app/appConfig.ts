@@ -24,7 +24,7 @@ export function loadInitialMessages(config: Config): Message[] {
 export function welcomeMessage(): Message {
   return {
     role: 'assistant',
-    content: '你好，我可以帮你用自然语言找 Koishi 插件。配置 API key 后会优先走 LLM；没有 key 时会自动使用本地增强搜索。',
+    content: '你好喵，我可以帮你用自然语言找 Koishi 插件 🔍。配置 API key 后会优先走 LLM 🤖；没有 key 时会自动使用本地增强搜索 🧭。',
     cards: [],
   };
 }

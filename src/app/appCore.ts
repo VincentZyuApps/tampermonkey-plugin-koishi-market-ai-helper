@@ -214,7 +214,7 @@ export class KoishiMarketAiHelper {
     this.state.config = next;
     saveConfig(next);
     if (!next.saveHistory) clearStoredHistory();
-    this.state.notice = '设置已保存。';
+    this.state.notice = '✅ 设置已保存。';
     this.state.settingsOpen = false;
     this.render();
   }
@@ -229,17 +229,17 @@ export class KoishiMarketAiHelper {
 
   private applySearch(query: string): void {
     if (applySearchToCurrentPage(query)) {
-      this.state.notice = `已尝试填入当前页搜索：${query}`;
+      this.state.notice = `🔎 已尝试填入当前页搜索：${query}`;
     } else {
       copyText(query);
-      this.state.notice = '没有找到当前页搜索框，已复制查询词。';
+      this.state.notice = '📋 没有找到当前页搜索框，已复制查询词。';
     }
     this.render();
   }
 
   private copy(text: string): void {
     copyText(text);
-    this.state.notice = `已复制：${text}`;
+    this.state.notice = `📋 已复制：${text}`;
     this.render();
   }
 

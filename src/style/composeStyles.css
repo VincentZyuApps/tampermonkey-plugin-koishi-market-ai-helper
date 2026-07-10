@@ -1,4 +1,3 @@
-export const composeStyles = `
   .kmh-compose {
     padding: 10px 12px 12px;
     border-top: 1px solid var(--kmh-border);
@@ -31,4 +30,3 @@ export const composeStyles = `
     border-color: var(--kmh-accent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--kmh-accent) 24%, transparent);
   }
-`;

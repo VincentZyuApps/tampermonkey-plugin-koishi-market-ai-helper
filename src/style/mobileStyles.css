@@ -1,4 +1,3 @@
-export const mobileStyles = `
   @media (max-width: 520px) {
     .kmh-stack {
       right: 8px;
@@ -24,4 +23,3 @@ export const mobileStyles = `
     .kmh-about { left: 8px; top: 8px; width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
     .kmh-send-mode { max-width: 100%; flex: 1 1 150px; }
   }
-`;

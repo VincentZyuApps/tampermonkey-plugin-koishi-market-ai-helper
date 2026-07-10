@@ -1,7 +1,17 @@
 {
   "name": "tampermonkey-plugin-koishi-market-ai-helper",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "🔍Koishi 插件市场 AI 对话式搜索助手，支持本地召回与多种 LLM 接入 🤖✨",
+  "license": "MIT",
+  "author": "VincentZyu <1830540513zyu@gmail.com>",
+  "homepage": "https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper#readme",
+  "bugs": {
+    "url": "https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {

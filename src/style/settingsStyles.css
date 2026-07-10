@@ -1,4 +1,3 @@
-export const settingsStyles = `
   .kmh-settings {
     position: fixed;
     right: 34px;
@@ -67,4 +66,3 @@ export const settingsStyles = `
     background: var(--kmh-accent-soft);
     box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--kmh-accent) 18%, transparent);
   }
-`;

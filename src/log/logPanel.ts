@@ -15,7 +15,7 @@ export function bindLogPanel(shadow: ShadowRoot, state: AppState, logger: Logger
     syncLogCopyLimit(shadow, state);
     const text = buildLogExportText(state.logs, state.logCopyLimit);
     copyText(text);
-    state.notice = `已复制最近 ${text.length} 个字符的日志。`;
+    state.notice = `📋 已复制最近 ${text.length} 个字符的日志。`;
     logger.write('info', '日志已复制到剪贴板', {
       copiedCharacters: text.length,
       limitCharacters: state.logCopyLimit,
