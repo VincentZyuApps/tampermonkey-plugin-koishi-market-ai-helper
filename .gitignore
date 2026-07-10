@@ -1,0 +1,15 @@
+node_modules/
+.npm-cache/
+dist/
+release/
+.vite/
+coverage/
+tmp/
+temp/
+
+*.log
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example

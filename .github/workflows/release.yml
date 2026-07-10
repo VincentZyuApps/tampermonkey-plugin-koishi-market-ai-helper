@@ -1,0 +1,292 @@
+name: Build Release Publish
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'action: check/build only; release: GitHub Release only; publish: GitHub Pages only.'
+        required: false
+        default: action
+        type: choice
+        options:
+          - action
+          - release
+          - publish
+      tag:
+        description: 'Release tag, for example v0.1.3. Empty means v + package.json version.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: koishi-market-ai-helper-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  select-mode:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.mode.outputs.should_run }}
+      mode: ${{ steps.mode.outputs.mode }}
+      trigger_word: ${{ steps.mode.outputs.trigger_word }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      commits_log: ${{ steps.commits.outputs.log }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select build mode
+        id: mode
+        env:
+          DISPATCH_MODE: ${{ github.event.inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            mode="${DISPATCH_MODE:-action}"
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+            echo "trigger_word=workflow_dispatch:${mode}" >> "${GITHUB_OUTPUT}"
+            echo "Manual workflow dispatch selected mode: ${mode}"
+            exit 0
+          fi
+
+          commit_msg="$(git log -1 --pretty=%B)"
+          if echo "${commit_msg}" | grep -qiE '\bbuild publish\b'; then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            echo "mode=publish" >> "${GITHUB_OUTPUT}"
+            echo "trigger_word=build publish" >> "${GITHUB_OUTPUT}"
+            echo "Commit message selected publish mode."
+          elif echo "${commit_msg}" | grep -qiE '\bbuild release\b'; then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            echo "mode=release" >> "${GITHUB_OUTPUT}"
+            echo "trigger_word=build release" >> "${GITHUB_OUTPUT}"
+            echo "Commit message selected release mode."
+          elif echo "${commit_msg}" | grep -qiE '\bbuild action\b'; then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            echo "mode=action" >> "${GITHUB_OUTPUT}"
+            echo "trigger_word=build action" >> "${GITHUB_OUTPUT}"
+            echo "Commit message selected action mode."
+          else
+            echo "should_run=false" >> "${GITHUB_OUTPUT}"
+            echo "mode=none" >> "${GITHUB_OUTPUT}"
+            echo "trigger_word=none" >> "${GITHUB_OUTPUT}"
+            echo "Commit message does not contain build action, build release, or build publish. Skipping."
+          fi
+
+      - name: Extract package version
+        id: version
+        if: steps.mode.outputs.should_run == 'true'
+        env:
+          MANUAL_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c "import json; print(json.load(open('package.json', encoding='utf-8'))['version'])")"
+          if [ -n "${MANUAL_TAG:-}" ]; then
+            tag="${MANUAL_TAG}"
+          else
+            tag="v${version}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "Package version: ${version}"
+          echo "Release tag: ${tag}"
+
+      - name: Collect commit log
+        id: commits
+        if: steps.mode.outputs.should_run == 'true'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          base_sha="${BEFORE_SHA:-}"
+          head_sha="${GITHUB_SHA}"
+          if [ -z "${base_sha}" ] || [ "${base_sha}" = "0000000000000000000000000000000000000000" ]; then
+            base_sha="$(git rev-list --max-parents=0 HEAD | tail -1)"
+          fi
+
+          log_text="$(git log "${base_sha}..${head_sha}" --pretty=format:'- %s (%h) by @%an' --reverse || true)"
+          if [ -z "${log_text}" ]; then
+            log_text="$(git log -1 --pretty=format:'- %s (%h) by @%an')"
+          fi
+
+          {
+            echo "log<<EOF"
+            echo "${log_text}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+  build-dist:
+    needs: select-mode
+    if: needs.select-mode.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      userscript_name: tampermonkey-plugin-koishi-market-ai-helper.user.js
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check and build dist
+        run: npm run check
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release pages
+          cp dist/tampermonkey-plugin-koishi-market-ai-helper.user.js release/
+          tar -czf release/tampermonkey-plugin-koishi-market-ai-helper-dist.tar.gz -C dist .
+          cd release
+          sha256sum tampermonkey-plugin-koishi-market-ai-helper.user.js > SHA256SUMS.txt
+          sha256sum tampermonkey-plugin-koishi-market-ai-helper-dist.tar.gz >> SHA256SUMS.txt
+          cd ..
+          cp release/tampermonkey-plugin-koishi-market-ai-helper.user.js pages/
+          cp release/SHA256SUMS.txt pages/
+          touch pages/.nojekyll
+          cat > pages/index.html <<'HTML'
+          <!doctype html>
+          <html lang="zh-CN">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Koishi Market AI Helper</title>
+            </head>
+            <body>
+              <main>
+                <h1>Koishi Market AI Helper</h1>
+                <p><a href="./tampermonkey-plugin-koishi-market-ai-helper.user.js">Install userscript</a></p>
+                <p><a href="./SHA256SUMS.txt">SHA256 checksums</a></p>
+              </main>
+            </body>
+          </html>
+          HTML
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release/
+          retention-days: 7
+
+      - name: Upload pages site
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-site
+          path: pages/
+          retention-days: 7
+
+  publish-release:
+    needs:
+      - select-mode
+      - build-dist
+    if: needs.select-mode.outputs.mode == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release/
+
+      - name: Render release template
+        env:
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.select-mode.outputs.version }}
+          RELEASE_TAG: ${{ needs.select-mode.outputs.tag }}
+          TRIGGER_WORD: ${{ needs.select-mode.outputs.trigger_word }}
+          COMMITS_LOG: ${{ needs.select-mode.outputs.commits_log }}
+        run: |
+          set -euo pipefail
+          cat > build_info.md <<EOF
+          - Repository: \`${REPO}\`
+          - Version: \`${VERSION}\`
+          - Release tag: \`${RELEASE_TAG}\`
+          - Commit: \`${GITHUB_SHA}\`
+          - Trigger: \`${TRIGGER_WORD}\`
+          - Workflow run: https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          cat > commit_log.md <<EOF
+          ${COMMITS_LOG}
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          template = Path('.github/release_template.md').read_text(encoding='utf-8')
+          body = (
+              template
+              .replace('__REPO__', os.environ['REPO'])
+              .replace('__VERSION__', os.environ['VERSION'])
+              .replace('__TAG__', os.environ['RELEASE_TAG'])
+              .replace('__BASE_URL__', f"https://github.com/{os.environ['REPO']}/releases/download/{os.environ['RELEASE_TAG']}")
+              .replace('__BUILD_INFO__', Path('build_info.md').read_text(encoding='utf-8').strip())
+              .replace('__COMMIT_LOG__', Path('commit_log.md').read_text(encoding='utf-8').strip())
+          )
+          Path('release_body.md').write_text(body, encoding='utf-8')
+          PY
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.select-mode.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" --title "${RELEASE_TAG}" --notes-file release_body.md
+            gh release upload "${RELEASE_TAG}" release/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" release/* \
+              --target "${GITHUB_SHA}" \
+              --title "${RELEASE_TAG}" \
+              --notes-file release_body.md
+          fi
+
+  publish-pages:
+    needs:
+      - select-mode
+      - build-dist
+    if: needs.select-mode.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download pages site
+        uses: actions/download-artifact@v4
+        with:
+          name: pages-site
+          path: pages/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

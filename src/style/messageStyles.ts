@@ -1,0 +1,65 @@
+export const messageStyles = `
+  .kmh-messages { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+  .kmh-message { margin-bottom: 12px; }
+  .kmh-message-role { margin-bottom: 4px; font-size: 12px; color: var(--kmh-muted); }
+  .kmh-message-content {
+    padding: 9px 10px;
+    border: 1px solid var(--kmh-border);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.55;
+    background: Canvas;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
+  }
+  .kmh-user .kmh-message-content { color: white; background: var(--kmh-brand); border-color: transparent; }
+  .kmh-cards { display: grid; gap: 8px; margin-top: 8px; }
+  .kmh-card {
+    padding: 10px;
+    border: 1px solid var(--kmh-border);
+    border-radius: 8px;
+    background: var(--kmh-accent-soft);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+  }
+  .kmh-card-title { font-size: 13px; font-weight: 760; overflow-wrap: anywhere; }
+  .kmh-card-title span { margin-left: 2px; color: var(--kmh-muted); font-weight: 500; }
+  .kmh-card-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .kmh-card-badges span {
+    padding: 2px 6px;
+    border-radius: 5px;
+    color: var(--kmh-brand-strong);
+    background: color-mix(in srgb, var(--kmh-brand) 16%, Canvas);
+    font-size: 11px;
+  }
+  .kmh-card p { margin: 8px 0 0; color: var(--kmh-muted); font-size: 12px; line-height: 1.45; }
+  .kmh-warning { color: var(--kmh-danger); }
+  .kmh-card-actions, .kmh-compose-actions, .kmh-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .kmh-dialog-actions { justify-content: space-between; }
+  .kmh-compose-actions { justify-content: flex-end; }
+  .kmh-card-actions button, .kmh-secondary, .kmh-primary {
+    min-height: 30px;
+    border-radius: 6px;
+    padding: 0 9px;
+    cursor: pointer;
+  }
+  .kmh-card-actions button, .kmh-secondary {
+    color: var(--kmh-text);
+    background: Canvas;
+    border: 1px solid var(--kmh-border);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent), inset 0 -1px 0 rgba(0,0,0,.06);
+  }
+  .kmh-card-actions button:hover, .kmh-secondary:hover { border-color: var(--kmh-accent); }
+  .kmh-primary {
+    color: white;
+    background: var(--kmh-brand);
+    border: 1px solid transparent;
+    font-weight: 650;
+    box-shadow: var(--kmh-inner-highlight), var(--kmh-inner-press);
+  }
+  .kmh-primary:disabled, .kmh-secondary:disabled { opacity: .6; cursor: progress; }
+  .kmh-notes { margin: 8px 0 0; padding-left: 18px; color: var(--kmh-muted); font-size: 12px; line-height: 1.45; }
+`;

@@ -1,0 +1,34 @@
+export const composeStyles = `
+  .kmh-compose {
+    padding: 10px 12px 12px;
+    border-top: 1px solid var(--kmh-border);
+    background: var(--kmh-accent-soft);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+  }
+  .kmh-input {
+    display: block;
+    width: 100%;
+    min-height: 58px;
+    max-height: 120px;
+    resize: vertical;
+    padding: 8px 9px;
+    border-radius: 8px;
+    line-height: 1.45;
+  }
+  .kmh-send-mode {
+    height: 30px;
+    max-width: 156px;
+    min-width: 0;
+    border: 1px solid var(--kmh-border);
+    border-radius: 6px;
+    padding: 0 6px;
+    color: var(--kmh-text);
+    background: Canvas;
+    outline: none;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent), inset 0 -1px 0 rgba(0,0,0,.06);
+  }
+  .kmh-send-mode:focus {
+    border-color: var(--kmh-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--kmh-accent) 24%, transparent);
+  }
+`;

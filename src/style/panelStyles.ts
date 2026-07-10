@@ -1,0 +1,126 @@
+export const panelStyles = `
+  .kmh-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--kmh-text);
+    background: var(--kmh-panel);
+    border: 1px solid var(--kmh-border);
+    border-radius: 10px;
+    box-shadow: var(--kmh-shadow), inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+    backdrop-filter: blur(18px);
+  }
+  .kmh-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 58px;
+    padding: 10px 12px;
+    color: white;
+    background: var(--kmh-brand);
+    border-bottom: 1px solid color-mix(in srgb, black 14%, transparent);
+    box-shadow: var(--kmh-inner-highlight), var(--kmh-inner-press);
+  }
+  .kmh-title { font-size: 15px; font-weight: 750; line-height: 1.2; }
+  .kmh-subtitle { margin-top: 3px; font-size: 12px; opacity: .82; }
+  .kmh-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .kmh-about-btn {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+  }
+  .kmh-header-actions { display: flex; gap: 4px; }
+  .kmh-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 6px;
+    color: white;
+    background: rgba(255, 255, 255, .12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 -1px 0 rgba(0,0,0,.1);
+    cursor: pointer;
+  }
+  .kmh-icon-btn:hover { background: rgba(255, 255, 255, .2); }
+  .kmh-icon {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .kmh-notice {
+    margin: 0 12px 8px;
+    padding: 7px 9px;
+    border: 1px solid color-mix(in srgb, var(--kmh-accent) 26%, transparent);
+    border-radius: 6px;
+    color: color-mix(in srgb, var(--kmh-accent) 70%, var(--kmh-text));
+    background: color-mix(in srgb, var(--kmh-accent) 10%, transparent);
+    font-size: 12px;
+  }
+  .kmh-about {
+    position: fixed;
+    left: 22px;
+    top: 22px;
+    z-index: 2147483646;
+    width: 326px;
+    max-width: calc(100vw - 44px);
+    color: var(--kmh-text);
+    background: var(--kmh-panel);
+    border: 1px solid var(--kmh-border);
+    border-radius: 9px;
+    box-shadow: var(--kmh-shadow), inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-26px, -26px) scale(.985);
+    transform-origin: left top;
+    transition:
+      opacity 180ms ease,
+      transform 260ms cubic-bezier(.22, 1, .36, 1);
+    will-change: opacity, transform;
+  }
+  .kmh-about.kmh-about-open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(0, 0) scale(1);
+  }
+  .kmh-about-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px;
+    color: white;
+    background: var(--kmh-brand);
+    border-bottom: 1px solid color-mix(in srgb, black 14%, transparent);
+    box-shadow: var(--kmh-inner-highlight), var(--kmh-inner-press);
+  }
+  .kmh-about-head .kmh-secondary {
+    color: white;
+    background: rgba(255, 255, 255, .12);
+    border-color: rgba(255, 255, 255, .22);
+  }
+  .kmh-about-title { font-size: 13px; font-weight: 760; }
+  .kmh-about-subtitle { margin-top: 2px; font-size: 11px; opacity: .82; }
+  .kmh-about-list {
+    margin: 0;
+    padding: 10px 12px 12px 28px;
+    color: var(--kmh-muted);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .kmh-about-list li + li { margin-top: 4px; }
+`;
