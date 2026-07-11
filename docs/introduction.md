@@ -1,4 +1,5 @@
 > 建议前往 [GitHub README](https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper#readme) 或 [Gitee README](https://gitee.com/vincent-zyu/tampermonkey-plugin-koishi-market-ai-helper#readme) 阅读完整说明。
+> 推荐在 Koishi 插件市场页面使用本脚本：[https://koishi.chat/zh-CN/market/](https://koishi.chat/zh-CN/market/)
 
 # Koishi Market AI Helper
 

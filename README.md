@@ -2,6 +2,8 @@
 
 > 前往 [Greasy Fork](https://greasyfork.org/zh-CN/scripts/586466-tampermonkey-plugin-koishi-market-ai-helper) 安装脚本到当前浏览器。
 
+> 推荐在 Koishi 插件市场页面使用本脚本：[https://koishi.chat/zh-CN/market/](https://koishi.chat/zh-CN/market/)
+
 # 🔍 Tampermonkey Plugin Koishi Market AI Helper
 
 Koishi 插件市场的 AI 对话式搜索助手。脚本以 TypeScript 编写，通过 Vite 和 `vite-plugin-monkey` 构建为单文件 userscript。
