@@ -296,6 +296,7 @@ jobs:
     if: always() && (needs.check-commit.outputs.mode == 'release' || needs.check-commit.outputs.mode == 'publish') && needs.publish-release.result == 'success' && (needs.sync-gitee-code.result == 'success' || needs.sync-gitee-code.result == 'skipped')
     runs-on: ubuntu-latest
     env:
+      GH_REPO: ${{ github.repository }}
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
       GITEE_OWNER: vincent-zyu
       GITEE_REPO: tampermonkey-plugin-koishi-market-ai-helper
