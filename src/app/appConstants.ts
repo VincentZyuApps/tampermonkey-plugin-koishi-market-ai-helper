@@ -11,6 +11,7 @@ export const DEFAULT_CONFIG: Config = {
   persistApiKey: true,
   saveHistory: false,
   stream: true,
+  thinkingMode: 'auto',
   chatDetail: 'chatty',
   logLevel: 'info',
   recallLimit: 25,

@@ -11,6 +11,7 @@ declare const GM_xmlhttpRequest:
       url: string;
       headers?: Record<string, string>;
       data?: string;
+      timeout?: number;
       responseType?: 'text' | 'stream';
       onloadstart?: (response: { status?: number; response?: unknown }) => void;
       onprogress?: (response: { responseText?: string }) => void;
@@ -24,6 +25,7 @@ export interface RequestOptions {
   method?: string;
   headers?: Record<string, string>;
   data?: string;
+  timeoutMs?: number;
   onProgressText?: (text: string) => void;
   signal?: AbortSignal;
 }
@@ -91,6 +93,10 @@ export function gmTextReadableStream(
     let started = false;
     let settled = false;
     let text = '';
+    let responseStatus = 0;
+    let loadFinished = false;
+    let streamFinished = false;
+    let streamError: unknown;
 
     if (options.signal?.aborted) {
       reject(abortError());
@@ -98,14 +104,41 @@ export function gmTextReadableStream(
     }
 
     logger?.('info', 'GM stream 请求开始', { method, url });
+    const settleStream = () => {
+      if (settled || !streamFinished || (!loadFinished && responseStatus <= 0)) return;
+      settled = true;
+      if (responseStatus >= 400) {
+        logger?.('error', 'GM stream 请求返回错误状态', {
+          method,
+          url,
+          status: responseStatus,
+          body: text.slice(0, 1000),
+        });
+        reject(new Error(`HTTP ${responseStatus}: ${text.slice(0, 500)}`));
+        return;
+      }
+      if (streamError) {
+        logger?.('warn', 'GM stream 读取失败', {
+          method,
+          url,
+          message: streamError instanceof Error ? streamError.message : String(streamError),
+        });
+        reject(streamError);
+        return;
+      }
+      logger?.('info', 'GM stream 请求完成', { method, url, responseLength: text.length });
+      resolve(text);
+    };
     const request = GM_xmlhttpRequest({
       method,
       url,
       headers: options.headers || {},
       data: options.data,
+      timeout: options.timeoutMs,
       responseType: 'stream',
       onloadstart(response) {
         started = true;
+        responseStatus = Number(response.status) || responseStatus;
         void readUnknownStream(response.response, {
           method,
           url,
@@ -120,30 +153,39 @@ export function gmTextReadableStream(
               chunkLength: chunkText.length,
               responseLength: text.length,
             });
-            options.onProgressText?.(text);
+            if (responseStatus < 400) options.onProgressText?.(text);
           },
         }).then(() => {
-          if (settled) return;
-          settled = true;
-          logger?.('info', 'GM stream 请求完成', { method, url, responseLength: text.length });
-          resolve(text);
+          streamFinished = true;
+          settleStream();
         }).catch((error) => {
-          if (settled) return;
-          settled = true;
-          logger?.('warn', 'GM stream 读取失败', {
-            method,
-            url,
-            message: error instanceof Error ? error.message : String(error),
-          });
-          reject(error);
+          streamError = error;
+          streamFinished = true;
+          settleStream();
         });
       },
       onload(response) {
         if (settled) return;
+        responseStatus = Number(response.status) || responseStatus;
+        loadFinished = true;
         if (!started) {
           settled = true;
-          reject(new Error(`GM stream 未提供可读取流，HTTP ${response.status}`));
+          const status = responseStatus || Number(response.status) || 0;
+          if (status >= 400) {
+            const body = (response.responseText || '').slice(0, 1000);
+            logger?.('error', 'GM stream 请求返回错误状态', {
+              method,
+              url,
+              status,
+              body,
+            });
+            reject(new Error(`HTTP ${status}: ${body.slice(0, 500)}`));
+            return;
+          }
+          reject(new Error(`GM stream 未提供可读取流，HTTP ${status}`));
+          return;
         }
+        settleStream();
       },
       onerror(error) {
         if (settled) return;
@@ -300,6 +342,7 @@ export function gmText(
       url,
       headers: options.headers || {},
       data: options.data,
+      timeout: options.timeoutMs,
       responseType: 'text',
       onprogress(response) {
         if (settled) return;

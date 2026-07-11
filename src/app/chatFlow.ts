@@ -55,6 +55,7 @@ export async function searchAndRespond(
     provider: state.config.provider,
     model: state.config.model,
     stream: state.config.stream,
+    thinkingMode: state.config.thinkingMode,
   }, requestProfile);
   logger.write('info', '开始请求 LLM', {
     provider: state.config.provider,
@@ -184,6 +185,7 @@ export function logSearchStart(state: AppState, logger: Logger, forceLocal: bool
     hasApiKey: Boolean(getApiKey(state.config, state.sessionApiKey)),
     recallLimit: state.config.recallLimit,
     stream: state.config.stream,
+    thinkingMode: state.config.thinkingMode,
   });
 }
 
@@ -264,7 +266,13 @@ function joinReasoning(first: string, second: string): string {
 
 function buildLlmRequestProfile(state: AppState): string {
   const transport = state.config.stream ? 'stream preferred' : 'non-stream';
-  return `模型 ${state.config.model} · 请求 ${llmRequestFormat(state)} · ${transport}`;
+  return `模型 ${state.config.model} · 思考 ${thinkingModeLabel(state.config.thinkingMode)} · 请求 ${llmRequestFormat(state)} · ${transport}`;
+}
+
+function thinkingModeLabel(mode: AppState['config']['thinkingMode']): string {
+  if (mode === 'enabled') return '开启';
+  if (mode === 'disabled') return '关闭';
+  return '自动';
 }
 
 function llmRequestFormat(state: AppState): string {

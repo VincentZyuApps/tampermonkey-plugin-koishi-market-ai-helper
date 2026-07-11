@@ -3,6 +3,8 @@ export type Role = 'user' | 'assistant';
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 export type SendMode = 'enter' | 'ctrlEnter';
 export type ChatDetail = 'chatty' | 'normal' | 'quiet';
+export type ThinkingMode = 'auto' | 'enabled' | 'disabled';
+export type AboutTab = 'overview' | 'guide' | 'privacy';
 
 export interface Config {
   provider: Provider;
@@ -12,6 +14,7 @@ export interface Config {
   persistApiKey: boolean;
   saveHistory: boolean;
   stream: boolean;
+  thinkingMode: ThinkingMode;
   chatDetail: ChatDetail;
   logLevel: LogLevel;
   recallLimit: number;
@@ -143,11 +146,17 @@ export interface LlmStreamSnapshot {
   events: number;
 }
 
+export interface ModelOption {
+  id: string;
+  ownedBy?: string;
+}
+
 export interface AppState {
   closedForPage: boolean;
   collapsed: boolean;
   settingsOpen: boolean;
   aboutOpen: boolean;
+  aboutTab: AboutTab;
   busy: boolean;
   notice: string;
   logOpen: boolean;
@@ -158,6 +167,7 @@ export interface AppState {
   registryPromise: Promise<RegistryData> | null;
   sessionApiKey: string;
   lastLocalResults: SearchResult[];
+  modelOptions: ModelOption[];
   config: Config;
   messages: Message[];
 }

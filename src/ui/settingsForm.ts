@@ -12,6 +12,7 @@ export function readSettingsFromForm(shadow: ShadowRoot, config: Config): Config
     persistApiKey: getChecked(shadow, 'persistApiKey'),
     saveHistory: getChecked(shadow, 'saveHistory'),
     stream: getChecked(shadow, 'stream'),
+    thinkingMode: readThinkingMode(getInputValue(shadow, 'thinkingMode')),
     chatDetail: readChatDetail(getInputValue(shadow, 'chatDetail')),
     logLevel: readLogLevel(getInputValue(shadow, 'logLevel')),
     recallLimit: clampRecallLimit(
@@ -51,6 +52,11 @@ function normalizeBaseUrl(value: string): string {
 function readChatDetail(value: string): Config['chatDetail'] {
   if (value === 'normal' || value === 'quiet') return value;
   return 'chatty';
+}
+
+function readThinkingMode(value: string): Config['thinkingMode'] {
+  if (value === 'enabled' || value === 'disabled') return value;
+  return 'auto';
 }
 
 function readLogLevel(value: string): Config['logLevel'] {

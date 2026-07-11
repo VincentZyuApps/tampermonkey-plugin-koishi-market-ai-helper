@@ -22,6 +22,6 @@
     .kmh-log.kmh-back-open { transform: translateX(0) scale(1); }
     .kmh-bubble { right: 14px; bottom: 14px; }
     .kmh-settings-grid { grid-template-columns: 1fr; }
-    .kmh-about { left: 8px; top: 8px; width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
+    .kmh-about { left: 8px; top: 8px; width: calc(100vw - 16px); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
     .kmh-compose-actions { grid-template-columns: minmax(112px, 1fr) max-content max-content; }
   }

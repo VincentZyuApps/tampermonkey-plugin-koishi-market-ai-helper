@@ -4,14 +4,23 @@
 
 # 🔍 Tampermonkey Plugin Koishi Market AI Helper
 
+Koishi 插件市场的 AI 对话式搜索助手。脚本以 TypeScript 编写，通过 Vite 和 `vite-plugin-monkey` 构建为单文件 userscript。
+
+作者：VincentZyu <1830540513zyu@gmail.com>
+
 <a href="https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper"><img height="25" alt="GitHub Repo" src="https://img.shields.io/badge/GitHub-repo-181717?logo=github&style=flat-square"></a>
+<a href="https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper/releases"><img height="25" alt="Latest GitHub Release" src="https://img.shields.io/github/v/release/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper?include_prereleases&amp;sort=semver&amp;display_name=tag&amp;logo=github&amp;style=flat-square"></a>
 <a href="https://gitee.com/vincent-zyu/tampermonkey-plugin-koishi-market-ai-helper"><img height="25" alt="Gitee Repo" src="https://img.shields.io/badge/Gitee-repo-c71d23?logo=gitee&logoColor=white&style=flat-square"></a>
 
 <a href="https://greasyfork.org/zh-CN/scripts/586466-tampermonkey-plugin-koishi-market-ai-helper"><img height="25" alt="Greasy Fork" src="https://img.shields.io/badge/Greasy%20Fork-install-670000?logo=googlechrome&logoColor=white&style=flat-square"></a>
 
-Koishi 插件市场的 AI 对话式搜索助手。脚本以 TypeScript 编写，通过 Vite 和 `vite-plugin-monkey` 构建为单文件 userscript。
+[![QQ群](https://img.shields.io/badge/QQ群-1085190201-12B7F5?style=flat-square&logo=qq&logoColor=white)](https://qm.qq.com/q/ZN7fxZ3qCq)
 
-作者：VincentZyu <1830540513zyu@gmail.com>
+<h2>💬 交流反馈</h2>
+<p>🐛 Bug 反馈 / 💡 建议 / 👨‍💻 插件开发交流，欢迎加群：</p>
+<p><del>💬 插件使用问题 / 🐛 Bug反馈 / 👨‍💻 插件开发交流，欢迎加入QQ群：<b>259248174</b>   🎉（这个群G了）</del></p> 
+<p>💬 插件使用问题 / 🐛 Bug反馈 / 👨‍💻 插件开发交流，欢迎加入QQ群：<b>1085190201</b> 🎉</p>
+<p>💡 在群里直接艾特我，回复的更快哦~ ✨</p>
 
 ## 🖼️ 预览
 
@@ -194,8 +203,10 @@ npm run syntax
 1. `package.json` 保存项目版本。
 2. `package-lock.json` 保存 lockfile 中的项目版本快照。
 3. `vite.config.ts` 会读取 `package.json`，构建时写入 userscript 的 `@version`。
-4. GitHub Actions 会读取 `package.json`，默认生成 `v<package.json version>` Release tag，例如 `v0.2.3-beta.3`。
+4. GitHub Actions 会读取 `package.json`，默认生成 `v<package.json version>` Release tag，格式为 `vX.Y.Z` 或 `vX.Y.Z-CHANNEL.N`。
 5. `dist/` 是构建产物，不提交到 git。
+
+下文使用抽象版本记号：`X` 表示 major，`Y` 表示 minor，`Z` 表示 patch，`CHANNEL` 表示 `alpha`、`beta` 或 `rc`，`N` 表示预发布序号。它们都是占位符，执行命令前必须替换为实际数字和渠道名称。
 
 推荐用 `npm version` 更新版本：
 
@@ -203,34 +214,33 @@ npm run syntax
 npm version patch --no-git-tag-version
 npm version minor --no-git-tag-version
 npm version major --no-git-tag-version
-npm version 0.2.3-beta.3 --no-git-tag-version
+npm version X.Y.Z-CHANNEL.N --no-git-tag-version
 ```
 
 含义：
 
 | 命令 | 行为 |
 | --- | --- |
-| `npm version patch --no-git-tag-version` | 自动递增补丁号，例如 `0.2.1` -> `0.2.2` |
-| `npm version minor --no-git-tag-version` | 自动递增次版本号，例如 `0.2.1` -> `0.3.0` |
-| `npm version major --no-git-tag-version` | 自动递增主版本号，例如 `0.2.1` -> `1.0.0` |
-| `npm version 0.2.3-beta.3 --no-git-tag-version` | 指定精确版本号，例如发布 beta 版本 |
+| `npm version patch --no-git-tag-version` | 自动递增补丁位：`X.Y.Z` -> `X.Y.(Z+1)` |
+| `npm version minor --no-git-tag-version` | 自动递增次版本位并重置补丁位：`X.Y.Z` -> `X.(Y+1).0` |
+| `npm version major --no-git-tag-version` | 自动递增主版本位并重置其余位：`X.Y.Z` -> `(X+1).0.0` |
+| `npm version X.Y.Z-CHANNEL.N --no-git-tag-version` | 指定精确的预发布版本号 |
 
 `patch` 不是占位符，不能写成指定版本；它表示“按 semver 规则递增 patch 位”。
 
-如果要指定版本号，直接写目标版本号，例如 `0.2.3-beta.3`。
+如果要指定版本号，正式版本使用 `X.Y.Z`，预发布版本使用 `X.Y.Z-CHANNEL.N`。
 
 预发布版本可以使用 SemVer prerelease 格式，例如：
 
 ```bash
-npm version 0.2.3-alpha.1 --no-git-tag-version
-npm version 0.2.3-beta.3 --no-git-tag-version
-npm version 0.2.3-rc.1 --no-git-tag-version
-npm version 0.2.3-beta.3.20260710 --no-git-tag-version
+npm version X.Y.Z-alpha.N --no-git-tag-version
+npm version X.Y.Z-beta.N --no-git-tag-version
+npm version X.Y.Z-rc.N --no-git-tag-version
 ```
 
-其中 `alpha`、`beta`、`rc` 都是常见 prerelease 标识，后面的 `.1`、`.3` 或 `.20260710` 是 prerelease 序号或批次标记。
+其中 `alpha`、`beta`、`rc` 都是常见 prerelease 标识，后面的 `.N` 是预发布序号。
 
-不要依赖 `+build` 元数据保存日期，例如 `npm version 0.2.3-beta.3+20260710 --no-git-tag-version` 会被 npm 规范化为 `0.2.3-beta.3`，`+20260710` 不会写入 `package.json`。
+为兼容 Tampermonkey、Greasy Fork 和各发布渠道的版本比较，本项目不使用 `+build` 元数据，也不把日期写入版本号。
 
 `npm version` 会同步更新 `package.json` 和 `package-lock.json` 中的项目版本。
 
@@ -261,13 +271,13 @@ git push origin main
 
 ```bash
 # 修改版本号
-# 示例版本可换成 0.2.3-alpha.1、0.2.3-beta.3、0.2.3-rc.1 或 0.2.3-beta.3.20260710
-npm version 0.2.3-beta.3 --no-git-tag-version
+# 正式版本使用 X.Y.Z，预发布版本使用 X.Y.Z-CHANNEL.N；执行前替换全部占位符
+npm version X.Y.Z-CHANNEL.N --no-git-tag-version
 npm run check
 git add -A
 
 # 二选一：发布 Release
-git commit -m "build release: release v0.2.3-beta.3"
+git commit -m "build release: release vX.Y.Z-CHANNEL.N"
 
 # 二选一：发布 Release 并部署 Pages
 git commit -m "build publish: release and deploy userscript page"

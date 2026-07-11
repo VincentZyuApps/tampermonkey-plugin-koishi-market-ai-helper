@@ -1,8 +1,10 @@
-export type IconName = 'info' | 'log';
+export type IconName = 'info' | 'log' | 'refresh' | 'chevron-down';
 
 export function renderIcon(name: IconName): string {
   if (name === 'info') return infoIcon();
   if (name === 'log') return logIcon();
+  if (name === 'refresh') return refreshIcon();
+  if (name === 'chevron-down') return chevronDownIcon();
   return '';
 }
 
@@ -24,6 +26,23 @@ function logIcon(): string {
       <path d="M10 12h6"></path>
       <path d="M10 16h6"></path>
       <path d="M5 7v14"></path>
+    </svg>
+  `;
+}
+
+function refreshIcon(): string {
+  return `
+    <svg class="kmh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M20 11a8 8 0 1 0-2.3 5.7"></path>
+      <path d="M20 4v7h-7"></path>
+    </svg>
+  `;
+}
+
+function chevronDownIcon(): string {
+  return `
+    <svg class="kmh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="m6 9 6 6 6-6"></path>
     </svg>
   `;
 }

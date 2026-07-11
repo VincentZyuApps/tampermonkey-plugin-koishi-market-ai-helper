@@ -1,6 +1,6 @@
 import { fetchTextStream, gmJson, gmText, gmTextReadableStream, isAbortError } from '../platform/gmBridge';
 import { getApiKey } from '../app/appConfig';
-import type { AppState, LlmJsonResult, LlmStreamSnapshot, PluginSummary } from '../types/appTypes';
+import type { AppState, Config, LlmJsonResult, LlmStreamSnapshot, PluginSummary, ThinkingMode } from '../types/appTypes';
 import type { Logger } from '../log/appLogger';
 import type { RequestOptions } from '../platform/gmBridge';
 
@@ -12,7 +12,7 @@ export async function callLlm(
   onStreamText?: (snapshot: LlmStreamSnapshot) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  const prompt = buildPrompt(query, candidates);
+  const prompt = buildPrompt(query, candidates, state.config.thinkingMode);
   if (state.config.provider === 'anthropic') {
     return callAnthropic(state, logger, prompt, onStreamText, signal);
   }
@@ -70,7 +70,7 @@ function findJsonObjects(text: string): string[] {
   return results;
 }
 
-function buildPrompt(query: string, candidates: PluginSummary[]): string {
+function buildPrompt(query: string, candidates: PluginSummary[], thinkingMode: ThinkingMode): string {
   const slimCandidates = candidates.map((item) => ({
     name: item.name,
     shortname: item.shortname,
@@ -91,7 +91,7 @@ function buildPrompt(query: string, candidates: PluginSummary[]): string {
     '你是 Koishi 插件市场搜索助手。',
     '请根据用户需求，从候选插件中推荐最合适的插件。',
     '只允许推荐候选列表中存在的 package name，不要编造插件。',
-    '正式回答只输出 JSON；如果模型有独立 reasoning/thinking 通道，可以正常使用，但不要把推理写进 JSON 正文。',
+    thinkingPromptInstruction(thinkingMode),
     '请优先返回严格 JSON，不要使用 Markdown 代码块。',
     'JSON 结构如下：',
     '{"answer":"简短中文总结","primary":[{"name":"package name","reason":"推荐理由","warning":"注意事项，可为空","query":"建议市场查询词"}],"alternatives":[{"name":"package name","reason":"备选理由","warning":"注意事项，可为空","query":"建议市场查询词"}],"notRecommended":[{"name":"package name","reason":"不优先推荐原因"}],"notes":["安装或选择注意事项"],"searchSyntax":"推荐的 Koishi 市场查询语法"}',
@@ -103,6 +103,26 @@ function buildPrompt(query: string, candidates: PluginSummary[]): string {
   ].join('\n');
 }
 
+function thinkingPromptInstruction(mode: ThinkingMode): string {
+  if (mode === 'enabled') {
+    return '正式回答只输出 JSON；如果模型支持独立 reasoning/thinking 通道，请优先启用，但不要把推理写进 JSON 正文。';
+  }
+  if (mode === 'disabled') {
+    return '正式回答只输出 JSON；请直接生成正式答案，不要在 JSON 正文中输出推理或思考过程。';
+  }
+  return '正式回答只输出 JSON；如果模型有独立 reasoning/thinking 通道，可以正常使用，但不要把推理写进 JSON 正文。';
+}
+
+function systemInstruction(mode: ThinkingMode): string {
+  if (mode === 'enabled') {
+    return '你是严谨的 Koishi 插件搜索助手，请在接口支持时使用独立思考通道，正式回答只输出可解析 JSON。';
+  }
+  if (mode === 'disabled') {
+    return '你是严谨的 Koishi 插件搜索助手，请直接回答，不输出可见思考过程，正式回答只输出可解析 JSON。';
+  }
+  return '你是严谨的 Koishi 插件搜索助手，正式回答只输出可解析 JSON；独立 reasoning/thinking 通道可以保留。';
+}
+
 async function callOpenAiCompatible(
   state: AppState,
   logger: Logger,
@@ -111,44 +131,87 @@ async function callOpenAiCompatible(
   signal?: AbortSignal,
 ): Promise<string> {
   const endpoint = appendEndpoint(state.config.baseUrl, '/chat/completions');
-  const payloadBase = {
+  const payloadBase: Record<string, unknown> = {
     model: state.config.model,
     temperature: state.config.temperature,
     max_tokens: state.config.maxTokens,
     messages: [
-      { role: 'system', content: '你是严谨的 Koishi 插件搜索助手，正式回答只输出可解析 JSON；独立 reasoning/thinking 通道可以保留。' },
+      { role: 'system', content: systemInstruction(state.config.thinkingMode) },
       { role: 'user', content: prompt },
     ],
   };
+  const thinkingFields = openAiThinkingFields(state.config);
+  const payloadWithThinking = { ...payloadBase, ...thinkingFields };
+  const thinkingApplied = Object.keys(thinkingFields).length > 0;
 
   logger.write('info', 'OpenAI-compatible 请求已准备', {
     endpoint,
-    model: payloadBase.model,
+    model: state.config.model,
     preferStream: Boolean(state.config.stream),
+    thinkingMode: state.config.thinkingMode,
+    thinkingParameterApplied: thinkingApplied,
     promptLength: prompt.length,
   });
+  if (state.config.thinkingMode !== 'auto' && !thinkingApplied) {
+    logger.write('warn', '当前 OpenAI-compatible 地址没有可安全识别的思考参数，仅应用提示偏好', {
+      baseUrl: state.config.baseUrl,
+      model: state.config.model,
+      thinkingMode: state.config.thinkingMode,
+    });
+  }
 
   const headers = {
     Authorization: `Bearer ${getApiKey(state.config, state.sessionApiKey)}`,
     'Content-Type': 'application/json',
   };
 
+  try {
+    return await requestOpenAiByTransport(
+      state,
+      endpoint,
+      headers,
+      payloadWithThinking,
+      logger,
+      onStreamText,
+      signal,
+      thinkingApplied,
+    );
+  } catch (error) {
+    if (!thinkingApplied || !isThinkingParameterCompatibilityError(error)) throw error;
+    logger.write('warn', '思考参数不受当前 OpenAI-compatible 接口支持，本次移除显式参数并保留提示偏好重试', {
+      endpoint,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return requestOpenAiByTransport(state, endpoint, headers, payloadBase, logger, onStreamText, signal, false);
+  }
+}
+
+async function requestOpenAiByTransport(
+  state: AppState,
+  endpoint: string,
+  headers: Record<string, string>,
+  payload: Record<string, unknown>,
+  logger: Logger,
+  onStreamText?: (snapshot: LlmStreamSnapshot) => void,
+  signal?: AbortSignal,
+  thinkingApplied = false,
+): Promise<string> {
   if (state.config.stream) {
     try {
-      const streamed = await requestOpenAiStream(endpoint, headers, payloadBase, logger, onStreamText, signal);
+      const streamed = await requestOpenAiStream(endpoint, headers, payload, logger, onStreamText, signal);
       if (streamed) return streamed;
       logger.write('warn', 'OpenAI-compatible 流式响应为空，改用非流式重试');
-      onStreamText?.({ content: '', reasoning: '流式响应为空，正在改用非流式请求……', events: 0 });
     } catch (error) {
       if (signal?.aborted || isAbortError(error)) throw error;
+      if (thinkingApplied && isThinkingParameterCompatibilityError(error)) throw error;
+      if (isHttpResponseError(error) && !isStreamingCompatibilityError(error)) throw error;
       logger.write('warn', 'OpenAI-compatible 流式请求失败，改用非流式重试', {
         message: error instanceof Error ? error.message : String(error),
       });
-      onStreamText?.({ content: '', reasoning: '流式请求失败，正在改用非流式请求……', events: 0 });
     }
   }
 
-  return requestOpenAiNonStream(endpoint, headers, payloadBase, logger, signal);
+  return requestOpenAiNonStream(endpoint, headers, payload, logger, signal);
 }
 
 async function requestOpenAiStream(
@@ -225,6 +288,9 @@ async function callAnthropic(
   onStreamText?: (snapshot: LlmStreamSnapshot) => void,
   signal?: AbortSignal,
 ): Promise<string> {
+  if (state.config.thinkingMode === 'enabled' && state.config.maxTokens < 2048) {
+    throw new Error('Anthropic 开启思考时，最大输出 token 至少需要 2048，建议使用 2400 或更高。');
+  }
   const endpoint = appendEndpoint(state.config.baseUrl || 'https://api.anthropic.com', '/v1/messages');
   const headers: Record<string, string> = {
     'x-api-key': getApiKey(state.config, state.sessionApiKey),
@@ -235,37 +301,74 @@ async function callAnthropic(
     headers.Authorization = `Bearer ${getApiKey(state.config, state.sessionApiKey)}`;
   }
 
-  const payloadBase = {
+  const payloadBase: Record<string, unknown> = {
     model: state.config.model,
     max_tokens: state.config.maxTokens,
     temperature: state.config.temperature,
-    system: '你是严谨的 Koishi 插件搜索助手，正式回答只输出可解析 JSON；独立 reasoning/thinking 通道可以保留。',
+    system: systemInstruction(state.config.thinkingMode),
     messages: [{ role: 'user', content: prompt }],
   };
+  const thinkingFields = anthropicThinkingFields(state.config.thinkingMode);
+  const payloadWithThinking = { ...payloadBase, ...thinkingFields };
+  const thinkingApplied = Object.keys(thinkingFields).length > 0;
+  if (state.config.thinkingMode === 'enabled') delete payloadWithThinking.temperature;
   logger.write('info', 'Anthropic 请求已准备', {
     endpoint,
-    model: payloadBase.model,
+    model: state.config.model,
     preferStream: Boolean(state.config.stream),
+    thinkingMode: state.config.thinkingMode,
+    thinkingParameterApplied: thinkingApplied,
     promptLength: prompt.length,
-    maxTokens: payloadBase.max_tokens,
+    maxTokens: state.config.maxTokens,
   });
 
+  try {
+    return await requestAnthropicByTransport(
+      state,
+      endpoint,
+      headers,
+      payloadWithThinking,
+      logger,
+      onStreamText,
+      signal,
+      thinkingApplied,
+    );
+  } catch (error) {
+    if (!thinkingApplied || !isThinkingParameterCompatibilityError(error)) throw error;
+    logger.write('warn', '思考参数不受当前 Anthropic 接口支持，本次移除显式参数并保留提示偏好重试', {
+      endpoint,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return requestAnthropicByTransport(state, endpoint, headers, payloadBase, logger, onStreamText, signal, false);
+  }
+}
+
+async function requestAnthropicByTransport(
+  state: AppState,
+  endpoint: string,
+  headers: Record<string, string>,
+  payload: Record<string, unknown>,
+  logger: Logger,
+  onStreamText?: (snapshot: LlmStreamSnapshot) => void,
+  signal?: AbortSignal,
+  thinkingApplied = false,
+): Promise<string> {
   if (state.config.stream) {
     try {
-      const streamed = await requestAnthropicStream(endpoint, headers, payloadBase, logger, onStreamText, signal);
+      const streamed = await requestAnthropicStream(endpoint, headers, payload, logger, onStreamText, signal);
       if (streamed) return streamed;
       logger.write('warn', 'Anthropic 流式响应为空，改用非流式重试');
-      onStreamText?.({ content: '', reasoning: '流式响应为空，正在改用非流式请求……', events: 0 });
     } catch (error) {
       if (signal?.aborted || isAbortError(error)) throw error;
+      if (thinkingApplied && isThinkingParameterCompatibilityError(error)) throw error;
+      if (isHttpResponseError(error) && !isStreamingCompatibilityError(error)) throw error;
       logger.write('warn', 'Anthropic 流式请求失败，改用非流式重试', {
         message: error instanceof Error ? error.message : String(error),
       });
-      onStreamText?.({ content: '', reasoning: '流式请求失败，正在改用非流式请求……', events: 0 });
     }
   }
 
-  return requestAnthropicNonStream(endpoint, headers, payloadBase, logger, signal);
+  return requestAnthropicNonStream(endpoint, headers, payload, logger, signal);
 }
 
 async function requestAnthropicStream(
@@ -477,6 +580,54 @@ function responseDebug(data: unknown, content: string): Record<string, unknown> 
   };
 }
 
+function openAiThinkingFields(config: Config): Record<string, unknown> {
+  if (config.thinkingMode === 'auto' || !isOfficialDeepSeekUrl(config.baseUrl)) return {};
+  return {
+    thinking: {
+      type: config.thinkingMode,
+    },
+  };
+}
+
+function anthropicThinkingFields(mode: ThinkingMode): Record<string, unknown> {
+  if (mode === 'auto') return {};
+  if (mode === 'disabled') return { thinking: { type: 'disabled' } };
+  return { thinking: { type: 'enabled', budget_tokens: 1024 } };
+}
+
+function isOfficialDeepSeekUrl(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'api.deepseek.com';
+  } catch {
+    return false;
+  }
+}
+
+function isThinkingParameterCompatibilityError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/\bHTTP\s+(?:400|422)\b/i.test(message)) return false;
+  const field = '(?:thinking|enable_thinking|reasoning_effort)';
+  const incompatibility = '(?:unknown|unsupported|unrecognized|not\\s+supported|not\\s+allowed|not\\s+permitted|extra\\s+(?:field|input)|input\\s+should\\s+be|invalid\\s+(?:field|parameter))';
+  return new RegExp(
+    `(?:${field}[\\s\\S]{0,160}${incompatibility}|${incompatibility}[\\s\\S]{0,160}${field})`,
+    'i',
+  ).test(message);
+}
+
+function isStreamingCompatibilityError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/\bHTTP\s+(?:400|404|405|415|422)\b/i.test(message)) return false;
+  const mentionsStream = /\bstream(?:ing)?\b/i.test(message);
+  const mentionsCompatibility = /unknown|unsupported|unrecognized|not\s+supported|not\s+allowed|not\s+permitted|invalid\s+(?:field|parameter|value)|extra\s+(?:field|input)/i.test(message);
+  return mentionsStream && mentionsCompatibility;
+}
+
+function isHttpResponseError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = /\bHTTP\s+(\d{3})\b/i.exec(message);
+  return Boolean(match && Number(match[1]) >= 400);
+}
+
 async function requestTextStream(
   endpoint: string,
   options: RequestOptions,
@@ -487,6 +638,7 @@ async function requestTextStream(
     return await gmTextReadableStream(endpoint, options, (level, message, detail) => logger.write(level, message, detail));
   } catch (error) {
     if (options.signal?.aborted || isAbortError(error)) throw error;
+    if (isHttpResponseError(error)) throw error;
     logger.write('warn', `${label} GM stream 不可用，改用 Fetch stream`, {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -496,6 +648,7 @@ async function requestTextStream(
     return await fetchTextStream(endpoint, options, (level, message, detail) => logger.write(level, message, detail));
   } catch (error) {
     if (options.signal?.aborted || isAbortError(error)) throw error;
+    if (isHttpResponseError(error)) throw error;
     logger.write('warn', `${label} Fetch stream 不可用，改用 GM 文本进度请求`, {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -506,5 +659,6 @@ async function requestTextStream(
 
 function appendEndpoint(baseUrl: string, endpoint: string): string {
   const base = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (base.endsWith('/v1') && endpoint.startsWith('/v1/')) return base + endpoint.slice(3);
   return base.endsWith(endpoint) ? base : base + endpoint;
 }

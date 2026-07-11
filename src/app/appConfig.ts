@@ -4,7 +4,9 @@ import type { Config, Message } from '../types/appTypes';
 
 export function loadConfig(): Config {
   const saved = gmGet<Partial<Config>>(STORAGE_KEYS.config, {});
-  return { ...DEFAULT_CONFIG, ...saved };
+  const config = { ...DEFAULT_CONFIG, ...saved };
+  config.thinkingMode = normalizeThinkingMode(saved.thinkingMode);
+  return config;
 }
 
 export function saveConfig(config: Config): void {
@@ -57,4 +59,9 @@ function stripRuntimeMessageState(message: Message): Message {
   const next = { ...message };
   delete next.reasoningOpen;
   return next;
+}
+
+function normalizeThinkingMode(value: unknown): Config['thinkingMode'] {
+  if (value === 'enabled' || value === 'disabled') return value;
+  return 'auto';
 }

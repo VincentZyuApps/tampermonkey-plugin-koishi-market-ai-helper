@@ -11,6 +11,7 @@ export function createInitialState(): AppState {
     collapsed: gmGet(STORAGE_KEYS.collapsed, true),
     settingsOpen: false,
     aboutOpen: false,
+    aboutTab: 'overview',
     busy: false,
     notice: '',
     logOpen: false,
@@ -21,6 +22,7 @@ export function createInitialState(): AppState {
     registryPromise: null,
     sessionApiKey: '',
     lastLocalResults: [],
+    modelOptions: [],
     config,
     messages: loadInitialMessages(config),
   };
