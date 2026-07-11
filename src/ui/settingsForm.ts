@@ -21,7 +21,7 @@ export function readSettingsFromForm(shadow: ShadowRoot, config: Config): Config
     maxTokens: clampNumber(
       Number.parseInt(getInputValue(shadow, 'maxTokens') || String(DEFAULT_CONFIG.maxTokens), 10),
       300,
-      8000,
+      10000,
       DEFAULT_CONFIG.maxTokens,
     ),
   };

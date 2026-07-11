@@ -169,18 +169,20 @@ permissions:
 
 `GITEE_PRIVATE_KEY` 是同步代码到 Gitee 时使用的 SSH 私钥。建议为这个 workflow 单独生成一对 SSH key。
 
+下面的 SSH key 注释和文件名使用完整项目前缀，便于与其他仓库的镜像凭据区分。
+
 Bash / Git Bash / Linux / macOS：
 
 ```bash
 mkdir -p ~/.ssh
-ssh-keygen -t ed25519 -C "koishi-market-ai-helper-gitee-mirror" -f ~/.ssh/koishi_market_ai_helper_gitee_mirror -N ""
+ssh-keygen -t ed25519 -C "tampermonkey-plugin-koishi-market-ai-helper-gitee-mirror" -f ~/.ssh/tampermonkey_plugin_koishi_market_ai_helper_gitee_mirror -N ""
 ```
 
 Windows PowerShell：
 
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.ssh"
-ssh-keygen -t ed25519 -C "koishi-market-ai-helper-gitee-mirror" -f "$HOME\.ssh\koishi_market_ai_helper_gitee_mirror"
+ssh-keygen -t ed25519 -C "tampermonkey-plugin-koishi-market-ai-helper-gitee-mirror" -f "$HOME\.ssh\tampermonkey_plugin_koishi_market_ai_helper_gitee_mirror"
 ```
 
 PowerShell 提示 `Enter passphrase` 和 `Enter same passphrase again` 时，连续按两次回车即可留空 passphrase。
@@ -188,7 +190,7 @@ PowerShell 提示 `Enter passphrase` 和 `Enter same passphrase again` 时，连
 复制公钥：
 
 ```powershell
-Get-Content "$HOME\.ssh\koishi_market_ai_helper_gitee_mirror.pub"
+Get-Content "$HOME\.ssh\tampermonkey_plugin_koishi_market_ai_helper_gitee_mirror.pub"
 ```
 
 把公钥添加到 Gitee：
@@ -200,7 +202,7 @@ https://gitee.com/profile/sshkeys
 复制私钥：
 
 ```powershell
-Get-Content "$HOME\.ssh\koishi_market_ai_helper_gitee_mirror" -Raw
+Get-Content "$HOME\.ssh\tampermonkey_plugin_koishi_market_ai_helper_gitee_mirror" -Raw
 ```
 
 在 GitHub Actions secrets 新增：
@@ -213,7 +215,7 @@ Value: 上面复制的完整私钥，包括 BEGIN 和 END 行
 可选 SSH 连通性检查：
 
 ```powershell
-ssh -i "$HOME\.ssh\koishi_market_ai_helper_gitee_mirror" -T git@gitee.com
+ssh -i "$HOME\.ssh\tampermonkey_plugin_koishi_market_ai_helper_gitee_mirror" -T git@gitee.com
 ```
 
 不要复用日常个人 SSH 私钥。如果这个私钥出现在聊天、issue、日志或不可信机器上，应删除对应 Gitee 公钥和 GitHub secret 后重新生成。
@@ -233,7 +235,7 @@ https://gitee.com/profile/personal_access_tokens
 建议创建专用 token，名称可以填：
 
 ```text
-koishi-market-ai-helper-github-actions
+tampermonkey-plugin-koishi-market-ai-helper-github-actions
 ```
 
 权限要求：

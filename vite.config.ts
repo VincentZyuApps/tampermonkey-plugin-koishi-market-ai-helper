@@ -21,9 +21,7 @@ export default defineConfig({
         match: [
           'https://koishi.chat/zh-CN/market',
           'https://koishi.chat/zh-CN/market/',
-        ],
-        include: [
-          '/^http:\\/\\/[^/]+\\/market\\/?(?:[?#].*)?$/',
+          'http://*/market*',
         ],
         'run-at': 'document-idle',
         grant: [

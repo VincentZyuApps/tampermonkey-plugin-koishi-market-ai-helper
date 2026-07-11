@@ -122,7 +122,7 @@
   .kmh-about-tabs {
     display: grid;
     flex: 0 0 auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 4px;
     padding: 8px 10px;
     background: color-mix(in srgb, var(--kmh-accent-soft) 72%, Canvas);

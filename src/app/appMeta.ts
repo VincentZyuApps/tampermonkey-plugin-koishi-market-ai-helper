@@ -17,7 +17,5 @@ export const APP_LINKS = {
   github: 'https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper',
   gitee: 'https://gitee.com/vincent-zyu/tampermonkey-plugin-koishi-market-ai-helper',
   greasyFork: 'https://greasyfork.org/zh-CN/scripts/586466-tampermonkey-plugin-koishi-market-ai-helper',
-  issues: 'https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper/issues',
-  releases: 'https://github.com/VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper/releases',
   qqGroup: 'https://qm.qq.com/q/ZN7fxZ3qCq',
 } as const;

@@ -74,18 +74,20 @@ function renderAbout(state: AppState): string {
       <div class="kmh-about-head">
         <div>
           <div id="kmh-about-title" class="kmh-about-title">ℹ️ 关于 ${escapeHtml(APP_SHORT_NAME)}</div>
-          <div class="kmh-about-subtitle">使用指南、最佳实践与隐私说明</div>
+          <div class="kmh-about-subtitle">概览、快速上手、最佳实践与隐私说明</div>
         </div>
         <button class="kmh-secondary" type="button" data-action="close-about">✕ 关闭</button>
       </div>
       <div class="kmh-about-tabs" role="tablist" aria-label="关于页面分类">
         ${renderAboutTab('overview', '概览', state.aboutTab)}
-        ${renderAboutTab('guide', '使用指南', state.aboutTab)}
+        ${renderAboutTab('quickstart', '快速上手', state.aboutTab)}
+        ${renderAboutTab('practices', '最佳实践', state.aboutTab)}
         ${renderAboutTab('privacy', '隐私帮助', state.aboutTab)}
       </div>
       <div class="kmh-about-body">
         ${renderAboutOverview(state)}
-        ${renderAboutGuide(state)}
+        ${renderAboutQuickStart(state)}
+        ${renderAboutPractices(state)}
         ${renderAboutPrivacy(state)}
       </div>
     </section>
@@ -113,27 +115,24 @@ function renderAboutOverview(state: AppState): string {
       <dl class="kmh-about-meta">
         <div><dt>作者</dt><dd>${escapeHtml(APP_AUTHOR_NAME)}</dd></div>
         <div><dt>邮箱</dt><dd><a href="mailto:${escapeAttr(APP_AUTHOR_EMAIL)}">${escapeHtml(APP_AUTHOR_EMAIL)}</a></dd></div>
-        <div><dt>当前提供商</dt><dd>${escapeHtml(providerLabel(state.config.provider))}</dd></div>
+        <div><dt>当前请求格式</dt><dd>${escapeHtml(providerLabel(state.config.provider))}</dd></div>
         <div><dt>当前模型</dt><dd>${escapeHtml(state.config.model)}</dd></div>
-        <div><dt>API 目标</dt><dd>${escapeHtml(displayApiTarget(state.config.baseUrl))}</dd></div>
         <div><dt>本地索引</dt><dd>${state.registry ? `${escapeHtml(String(state.registry.objects.length))} 个插件` : '尚未加载'}</dd></div>
       </dl>
       <div class="kmh-about-links" aria-label="项目链接">
         ${renderExternalLink('GitHub', APP_LINKS.github)}
         ${renderExternalLink('Gitee', APP_LINKS.gitee)}
         ${renderExternalLink('Greasy Fork', APP_LINKS.greasyFork)}
-        ${renderExternalLink('Issues', APP_LINKS.issues)}
-        ${renderExternalLink('Releases', APP_LINKS.releases)}
         ${renderExternalLink('QQ 群', APP_LINKS.qqGroup)}
       </div>
     </section>
   `;
 }
 
-function renderAboutGuide(state: AppState): string {
-  const active = state.aboutTab === 'guide';
+function renderAboutQuickStart(state: AppState): string {
+  const active = state.aboutTab === 'quickstart';
   return `
-    <section id="kmh-about-pane-guide" class="kmh-about-pane" role="tabpanel" aria-labelledby="kmh-about-tab-guide" tabindex="0" ${active ? '' : 'hidden inert'}>
+    <section id="kmh-about-pane-quickstart" class="kmh-about-pane" role="tabpanel" aria-labelledby="kmh-about-tab-quickstart" tabindex="0" ${active ? '' : 'hidden inert'}>
       <section class="kmh-about-section">
         <h3>快速上手</h3>
         <ol>
@@ -142,6 +141,14 @@ function renderAboutGuide(state: AppState): string {
           <li>输入插件需求后点击发送；不希望请求 LLM 时使用“本地搜索”。</li>
         </ol>
       </section>
+    </section>
+  `;
+}
+
+function renderAboutPractices(state: AppState): string {
+  const active = state.aboutTab === 'practices';
+  return `
+    <section id="kmh-about-pane-practices" class="kmh-about-pane" role="tabpanel" aria-labelledby="kmh-about-tab-practices" tabindex="0" ${active ? '' : 'hidden inert'}>
       <section class="kmh-about-section">
         <h3>最佳实践</h3>
         <ul>
@@ -176,7 +183,7 @@ function renderAboutPrivacy(state: AppState): string {
         <ul>
           <li>${sendKey} 发送，Shift + Enter 始终换行。</li>
           <li>另一种发送组合用于换行，可在输入框下方切换发送方式。</li>
-          <li>Esc 优先停止当前请求；模型列表打开时先关闭列表，焦点不在输入控件时关闭辅助面板。</li>
+          <li>Esc 优先停止当前请求；模型列表打开时先关闭列表，否则关闭当前焦点所在或最近打开的辅助面板。</li>
         </ul>
       </section>
     </section>
@@ -185,14 +192,6 @@ function renderAboutPrivacy(state: AppState): string {
 
 function renderExternalLink(label: string, href: string): string {
   return `<a class="kmh-about-link" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
-}
-
-function displayApiTarget(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).host || baseUrl;
-  } catch {
-    return baseUrl || '未配置';
-  }
 }
 
 function renderSettings(state: AppState, apiKey: string): string {
@@ -206,7 +205,7 @@ function renderSettings(state: AppState, apiKey: string): string {
       <div class="kmh-settings-feedback" data-role="settings-feedback" aria-live="polite"></div>
       <div class="kmh-settings-grid">
         <label>
-          <span>🤖 提供商</span>
+          <span>🤖 请求格式</span>
           <select data-setting="provider">
             <option value="openai" ${state.config.provider === 'openai' ? 'selected' : ''}>OpenAI-compatible</option>
             <option value="anthropic" ${state.config.provider === 'anthropic' ? 'selected' : ''}>Anthropic</option>
@@ -240,7 +239,7 @@ function renderSettings(state: AppState, apiKey: string): string {
         </label>
         <label>
           <span>📏 最大输出 token</span>
-          <input data-setting="maxTokens" type="number" min="300" max="8000" value="${escapeAttr(String(state.config.maxTokens))}">
+          <input data-setting="maxTokens" type="number" min="300" max="10000" value="${escapeAttr(String(state.config.maxTokens))}">
         </label>
         <label>
           <span>💭 思考模式</span>

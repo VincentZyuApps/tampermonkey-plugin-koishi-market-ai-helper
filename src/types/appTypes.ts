@@ -4,7 +4,7 @@ export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 export type SendMode = 'enter' | 'ctrlEnter';
 export type ChatDetail = 'chatty' | 'normal' | 'quiet';
 export type ThinkingMode = 'auto' | 'enabled' | 'disabled';
-export type AboutTab = 'overview' | 'guide' | 'privacy';
+export type AboutTab = 'overview' | 'quickstart' | 'practices' | 'privacy';
 
 export interface Config {
   provider: Provider;

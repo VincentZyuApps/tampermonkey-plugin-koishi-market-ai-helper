@@ -21,6 +21,8 @@ interface ScrollState {
   nearBottom: boolean;
 }
 
+type AuxiliaryPanel = 'about' | 'settings' | 'log';
+
 export class KoishiMarketAiHelper {
   private readonly root: HTMLDivElement;
   private readonly shadow: ShadowRoot;
@@ -36,6 +38,7 @@ export class KoishiMarketAiHelper {
   private modelFetchLoading = false;
   private modelFetchMessage = '';
   private modelFetchTone: 'muted' | 'success' | 'error' = 'muted';
+  private auxiliaryPanelOrder: AuxiliaryPanel[] = [];
 
   constructor() {
     this.state = this.createState();
@@ -187,13 +190,11 @@ export class KoishiMarketAiHelper {
   }
 
   private setAboutOpen(open: boolean, restoreFocus = false): void {
-    if (open) {
-      this.setSettingsOpen(false);
-      this.setLogOpen(false);
-    } else {
+    if (!open) {
       this.focusOutsidePanelBeforeClose('#kmh-about-panel', '[data-role="about-trigger"]', restoreFocus);
     }
     this.state.aboutOpen = open;
+    this.updateAuxiliaryPanelOrder('about', open);
     updateAboutPanel(this.shadow, open);
     if (open) {
       window.requestAnimationFrame(() => {
@@ -204,15 +205,13 @@ export class KoishiMarketAiHelper {
   }
 
   private setSettingsOpen(open: boolean, restoreFocus = false): void {
-    if (open) {
-      this.setAboutOpen(false);
-      this.setLogOpen(false);
-    } else {
+    if (!open) {
       this.focusOutsidePanelBeforeClose('#kmh-settings-panel', '[data-role="settings-trigger"]', restoreFocus);
       this.modelMenuOpen = false;
       this.abortModelCatalogFetch('获取已取消，可重新获取模型列表。');
     }
     this.state.settingsOpen = open;
+    this.updateAuxiliaryPanelOrder('settings', open);
     updateBackPanel(this.shadow, 'settings', open);
     this.applyModelMenuUi();
     if (open) {
@@ -224,13 +223,11 @@ export class KoishiMarketAiHelper {
   }
 
   private setLogOpen(open: boolean, restoreFocus = false): void {
-    if (open) {
-      this.setAboutOpen(false);
-      this.setSettingsOpen(false);
-    } else {
+    if (!open) {
       this.focusOutsidePanelBeforeClose('#kmh-log-panel', '[data-role="log-trigger"]', restoreFocus);
     }
     this.state.logOpen = open;
+    this.updateAuxiliaryPanelOrder('log', open);
     updateBackPanel(this.shadow, 'log', open);
     if (open) {
       window.requestAnimationFrame(() => {
@@ -249,6 +246,42 @@ export class KoishiMarketAiHelper {
     const active = this.shadow.activeElement;
     if (!restoreFocus && (!active || !panel?.contains(active))) return;
     this.shadow.querySelector<HTMLButtonElement>(triggerSelector)?.focus();
+  }
+
+  private updateAuxiliaryPanelOrder(panel: AuxiliaryPanel, open: boolean): void {
+    this.auxiliaryPanelOrder = this.auxiliaryPanelOrder.filter((value) => value !== panel);
+    if (open) this.auxiliaryPanelOrder.push(panel);
+  }
+
+  private focusedAuxiliaryPanel(origin: EventTarget | undefined): AuxiliaryPanel | null {
+    if (!(origin instanceof Node)) return null;
+    if (this.shadow.querySelector('#kmh-about-panel')?.contains(origin)) return 'about';
+    if (this.shadow.querySelector('#kmh-settings-panel')?.contains(origin)) return 'settings';
+    if (this.shadow.querySelector('#kmh-log-panel')?.contains(origin)) return 'log';
+    return null;
+  }
+
+  private latestOpenAuxiliaryPanel(): AuxiliaryPanel | null {
+    for (let index = this.auxiliaryPanelOrder.length - 1; index >= 0; index -= 1) {
+      const panel = this.auxiliaryPanelOrder[index];
+      if (panel && this.isAuxiliaryPanelOpen(panel)) return panel;
+    }
+    if (this.state.aboutOpen) return 'about';
+    if (this.state.settingsOpen) return 'settings';
+    if (this.state.logOpen) return 'log';
+    return null;
+  }
+
+  private isAuxiliaryPanelOpen(panel: AuxiliaryPanel): boolean {
+    if (panel === 'about') return this.state.aboutOpen;
+    if (panel === 'settings') return this.state.settingsOpen;
+    return this.state.logOpen;
+  }
+
+  private closeAuxiliaryPanel(panel: AuxiliaryPanel, restoreFocus: boolean): void {
+    if (panel === 'about') this.setAboutOpen(false, restoreFocus);
+    else if (panel === 'settings') this.setSettingsOpen(false, restoreFocus);
+    else this.setLogOpen(false, restoreFocus);
   }
 
   private bindAboutTabs(): void {
@@ -370,7 +403,7 @@ export class KoishiMarketAiHelper {
       this.modelCatalogSource = '';
       this.state.modelOptions = [];
       this.updateModelOptionsDom();
-      this.setModelFetchUi(false, '提供商或 Base URL 已变化，请重新获取模型列表。', 'muted');
+      this.setModelFetchUi(false, '请求格式或 Base URL 已变化，请重新获取模型列表。', 'muted');
     };
     this.shadow.querySelector<HTMLSelectElement>('[data-setting="provider"]')?.addEventListener('change', invalidate);
     this.shadow.querySelector<HTMLInputElement>('[data-setting="baseUrl"]')?.addEventListener('input', invalidate);
@@ -696,9 +729,8 @@ export class KoishiMarketAiHelper {
     if (!this.state.aboutOpen && !this.state.settingsOpen && !this.state.logOpen) return;
     event.preventDefault();
     event.stopPropagation();
-    if (this.state.aboutOpen) this.setAboutOpen(false, true);
-    else if (this.state.settingsOpen) this.setSettingsOpen(false, true);
-    else if (this.state.logOpen) this.setLogOpen(false, true);
+    const panel = this.focusedAuxiliaryPanel(origin) || this.latestOpenAuxiliaryPanel();
+    if (panel) this.closeAuxiliaryPanel(panel, true);
   }
 
   private handleGlobalPointerdown(event: PointerEvent): void {
@@ -806,7 +838,7 @@ function readSendMode(value: string): SendMode {
 }
 
 function readAboutTab(value: string | undefined): AboutTab {
-  if (value === 'guide' || value === 'privacy') return value;
+  if (value === 'quickstart' || value === 'practices' || value === 'privacy') return value;
   return 'overview';
 }
 
