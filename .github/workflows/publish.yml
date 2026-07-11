@@ -275,16 +275,34 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.check-commit.outputs.tag }}
+          PACKAGE_VERSION: ${{ needs.check-commit.outputs.version }}
         run: |
           set -euo pipefail
+          release_flags=(--prerelease=false)
+          create_target_flags=()
+          if [ "${RELEASE_TAG}" = "v${PACKAGE_VERSION}" ]; then
+            release_flags+=(--latest)
+            create_target_flags+=(--target "${GITHUB_SHA}")
+            echo "Publishing ${RELEASE_TAG} as the Latest GitHub Release."
+          else
+            release_flags+=(--latest=false)
+            create_target_flags+=(--verify-tag)
+            echo "Publishing manual tag ${RELEASE_TAG} without changing the Latest GitHub Release."
+          fi
+
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release edit "${RELEASE_TAG}" --title "${RELEASE_TAG}" --notes-file release_body.md
             gh release upload "${RELEASE_TAG}" release/* --clobber
+            gh release edit "${RELEASE_TAG}" \
+              --draft=false \
+              --title "${RELEASE_TAG}" \
+              --notes-file release_body.md \
+              "${release_flags[@]}"
           else
             gh release create "${RELEASE_TAG}" release/* \
-              --target "${GITHUB_SHA}" \
               --title "${RELEASE_TAG}" \
-              --notes-file release_body.md
+              --notes-file release_body.md \
+              "${create_target_flags[@]}" \
+              "${release_flags[@]}"
           fi
 
   sync-gitee-release:
@@ -295,107 +313,19 @@ jobs:
       - sync-gitee-code
     if: always() && (needs.check-commit.outputs.mode == 'release' || needs.check-commit.outputs.mode == 'publish') && needs.publish-release.result == 'success' && (needs.sync-gitee-code.result == 'success' || needs.sync-gitee-code.result == 'skipped')
     runs-on: ubuntu-latest
-    env:
-      GH_REPO: ${{ github.repository }}
-      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-      GITEE_OWNER: vincent-zyu
-      GITEE_REPO: tampermonkey-plugin-koishi-market-ai-helper
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Recreate Gitee release from GitHub release
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_OWNER: vincent-zyu
+          GITEE_REPO: tampermonkey-plugin-koishi-market-ai-helper
           RELEASE_TAG: ${{ needs.check-commit.outputs.tag }}
-        run: |
-          set -euo pipefail
-          test -n "${GITEE_TOKEN}" || { echo "GITEE_TOKEN is not configured."; exit 1; }
-          API_BASE="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}"
-          CURL=(curl -fsS -k --retry 3 --retry-delay 5 --retry-all-errors)
-          tag="${RELEASE_TAG}"
-          release_info="$(gh release view "${tag}" --json name,body,isPrerelease)"
-          release_name="$(echo "${release_info}" | jq -r --arg tag "${tag}" '.name // $tag')"
-          prerelease="$(echo "${release_info}" | jq -r '.isPrerelease // false')"
-          echo "${release_info}" | jq -r '.body // ""' > release_body.md
-          mkdir -p assets
-          gh release download "${tag}" --pattern "*" --dir assets
-          ls -lh assets
-          test -f assets/tampermonkey-plugin-koishi-market-ai-helper.user.js
-          test -f assets/tampermonkey-plugin-koishi-market-ai-helper-dist.tar.gz
-          test -f assets/SHA256SUMS.txt
-          if "${CURL[@]}" "${API_BASE}/tags/${tag}?access_token=${GITEE_TOKEN}" > /dev/null 2>&1; then
-            echo "Gitee tag ${tag} already exists."
-          else
-            echo "Creating Gitee tag ${tag} from main."
-            tag_payload="$(jq -n \
-              --arg token "${GITEE_TOKEN}" \
-              --arg tag "${tag}" \
-              '{
-                access_token: $token,
-                tag_name: $tag,
-                refs: "main",
-                tag_message: ("Release " + $tag)
-              }')"
-            "${CURL[@]}" -X POST \
-              --header 'Content-Type: application/json;charset=UTF-8' \
-              "${API_BASE}/tags" \
-              -d "${tag_payload}" > /tmp/gitee_tag.json
-          fi
-          existing="$(curl -sS -k "${API_BASE}/releases/tags/${tag}?access_token=${GITEE_TOKEN}" || true)"
-          release_id="$(echo "${existing}" | jq -r '.id // empty' 2>/dev/null || true)"
-          if [ -n "${release_id}" ] && [ "${release_id}" != "null" ]; then
-            echo "Deleting existing Gitee release ${release_id} for ${tag}."
-            "${CURL[@]}" -X DELETE "${API_BASE}/releases/${release_id}?access_token=${GITEE_TOKEN}" > /tmp/gitee_delete.json
-            sleep 2
-          fi
-          create_payload="$(jq -n \
-            --arg token "${GITEE_TOKEN}" \
-            --arg tag "${tag}" \
-            --arg name "${release_name}" \
-            --rawfile body release_body.md \
-            --argjson prerelease "${prerelease}" \
-            '{
-              access_token: $token,
-              tag_name: $tag,
-              name: $name,
-              body: $body,
-              target_commitish: "main",
-              prerelease: $prerelease
-            }')"
-          "${CURL[@]}" -X POST \
-            --header 'Content-Type: application/json;charset=UTF-8' \
-            "${API_BASE}/releases" \
-            -d "${create_payload}" > /tmp/gitee_release.json
-          new_release_id="$(jq -r '.id // empty' /tmp/gitee_release.json)"
-          if [ -z "${new_release_id}" ] || [ "${new_release_id}" = "null" ]; then
-            echo "Gitee release response did not include release id."
-            cat /tmp/gitee_release.json
-            exit 1
-          fi
-          echo "Created Gitee release ${new_release_id}."
-          success=0
-          total=0
-          for file in assets/*; do
-            [ -f "${file}" ] || continue
-            total=$((total + 1))
-            filename="$(basename "${file}")"
-            filesize="$(stat -c%s "${file}" 2>/dev/null || stat -f%z "${file}" 2>/dev/null || echo 0)"
-            echo "Uploading ${filename} (${filesize} bytes)."
-            response="$(curl -fsS -k --retry 3 --retry-delay 10 --retry-all-errors \
-              --max-time 1200 --connect-timeout 30 \
-              -X POST \
-              --header "Content-Type: multipart/form-data" \
-              -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@${file}" \
-              "${API_BASE}/releases/${new_release_id}/attach_files")"
-            if echo "${response}" | jq -e '.browser_download_url // .download_url // .id' > /dev/null; then
-              echo "Uploaded ${filename}."
-              success=$((success + 1))
-            else
-              echo "Unexpected Gitee response for ${filename}:"
-              echo "${response}" | head -c 500
-              exit 1
-            fi
-          done
-          echo "Gitee upload summary: ${success}/${total} succeeded."
+        run: bash .github/scripts/sync-gitee-release.sh
 
   publish-pages:
     needs:

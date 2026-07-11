@@ -38,6 +38,12 @@ git push
 
 也可以在 GitHub Actions 页面手动运行 workflow，并选择 `action`、`release` 或 `publish`。
 
+GitHub Release 标记规则：
+
+1. 当 Release tag 等于 `v<package.json version>` 时，显式标记为 Latest。
+2. 手动填写其他 tag 时，该 GitHub tag 必须已经存在，并且不会改变当前 Latest Release。
+3. 所有版本都作为普通 Release 发布，即使 tag 包含 `alpha`、`beta` 或 `rc`，也不标记为 Pre-release。
+
 `build release` 和 `build publish` 会上传：
 
 ```text
@@ -75,10 +81,19 @@ GitHub VincentZyuApps/tampermonkey-plugin-koishi-market-ai-helper
 
 1. 读取 GitHub Release 正文和 assets。
 2. 下载 GitHub Release assets。
-3. 确认 Gitee tag 存在，不存在则从 Gitee `main` 创建。
-4. 如果同 tag 的 Gitee Release 已存在，删除旧 Gitee Release。
-5. 重新创建 Gitee Release。
-6. 上传全部 Release assets。
+3. 解析 GitHub tag 的真实 commit SHA，并与 Gitee tag 校验。
+4. 如果 Gitee tag 不存在，则从 GitHub tag 指向的 commit SHA 创建。
+5. 如果同 tag 的 Gitee Release 已存在，删除旧 Gitee Release 并等待删除完成。
+6. 使用同一个 tag 重新创建普通 Gitee Release，固定 `prerelease: false`。
+7. 上传全部 Release assets，并记录文件大小、HTTP 状态和上传耗时。
+
+具体实现位于 `.github/scripts/sync-gitee-release.sh`。Workflow 会先通过 `actions/checkout@v4` 检出仓库，再显式使用 Bash 运行该脚本。
+
+`.gitattributes` 固定 `*.sh` 使用 LF 换行，避免 Windows CRLF 导致 Linux Bash 解析失败。
+
+Gitee API 没有与 GitHub `make_latest` 完全对应的开关，因此这里只保证 Gitee Release 不标记为 Pre-release。GitHub 的 latest 下载直链始终由当前 `package.json` 版本维护。
+
+同 tag 的 Gitee Release 采用删除后重建策略，因此 Release ID 和附件下载计数可能重置。当前附件体积较小，这个取舍用于确保 Gitee 正文与附件和 GitHub 完全一致。
 
 Gitee Release 同步失败会让整个 GitHub Actions 变红。这样可以避免 GitHub 已发布、Gitee 没同步时被误认为完整发布成功。
 
@@ -287,9 +302,10 @@ GREASYFORK_WEBHOOK_URL is not configured. Skipping Greasy Fork webhook notificat
 3. Gitee Release 是否出现同名 tag。
 4. Gitee Release 是否包含 `.user.js`、`dist.tar.gz`、`SHA256SUMS.txt`。
 5. Gitee `.user.js` 头部 `@version` 是否等于 `package.json`。
-6. GitHub 仓库 `Settings -> Webhooks` 中 Greasy Fork webhook 的最近一次投递为成功。
-7. Greasy Fork 脚本历史里出现新版本。
-8. Greasy Fork 页面展示的 `@version` 和 `package.json` 一致。
+6. GitHub Release 的 Latest tag 是否等于 `v<package.json version>`。
+7. GitHub 仓库 `Settings -> Webhooks` 中 Greasy Fork webhook 的最近一次投递为成功。
+8. Greasy Fork 脚本历史里出现新版本。
+9. Greasy Fork 页面展示的 `@version` 和 `package.json` 一致。
 
 如果 Gitee 没更新，先确认：
 

@@ -1,0 +1,2 @@
+*.sh text eol=lf
+.github/scripts/*.sh linguist-language=Shell linguist-detectable=true
