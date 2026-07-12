@@ -25,7 +25,7 @@ build publish
 | 上传 Release assets | ❌ | ✅ | ✅ |
 | 同步 Gitee Release assets | ❌ | ✅ | ✅ |
 | 部署 GitHub Pages | ❌ | ❌ | ✅ |
-| 触发 Greasy Fork 同步 | ❌ | ✅ | ✅ |
+| 新建 Release 时触发 Greasy Fork Webhook | ❌ | ✅ | ✅ |
 
 示例：
 
@@ -124,6 +124,14 @@ https://github.com/YourRepoName/YourProjectName/releases/latest/download/script.
 
 ## 配置 GitHub Webhook
 
+先登录 Greasy Fork，并打开 Webhook 配置说明页：
+
+```text
+https://greasyfork.org/zh-CN/users/webhook-info
+```
+
+点击 `Generate` 或 `Regenerate` 生成 Webhook Secret。复制页面显示的 Payload URL 和 Secret，Secret 只填写到 GitHub Webhook 配置中，不要写入仓库文件、Actions 日志或聊天记录。
+
 进入 GitHub 仓库：
 
 ```text
@@ -136,7 +144,7 @@ Settings -> Webhooks -> Add webhook
 | --- | --- |
 | Payload URL | `https://greasyfork.org/zh-CN/users/1621917-vincentzyu233/webhook` |
 | Content type | `application/json` |
-| Secret | 留空 |
+| Secret | 填入 Greasy Fork Webhook 配置说明页生成的 Secret |
 | Which events would you like to trigger this webhook? | 选择 `Let me select individual events` |
 | Pushes | 取消勾选 |
 | Releases | 勾选 |
@@ -144,7 +152,9 @@ Settings -> Webhooks -> Add webhook
 
 选择 `Releases` 的原因：本仓库的 Greasy Fork 同步 URL 使用 `releases/latest/download/*.user.js`，Greasy Fork 说明这个格式只适用于 release events。
 
-配置完成后，本仓库执行 `build release` 或 `build publish` 创建或更新 GitHub Release 时，GitHub 会把 release webhook 发给 Greasy Fork，Greasy Fork 再检查 latest release asset 并同步脚本。
+Greasy Fork 会用这个 Secret 校验 GitHub 发送的 `X-Hub-Signature`。Secret 缺失或两边不一致时，Webhook 会直接返回 HTTP `403`。
+
+配置完成后，本仓库执行 `build release` 或 `build publish` 创建新的 GitHub Release 时，GitHub 会把带签名的 `release: published` webhook 发给 Greasy Fork，Greasy Fork 再检查 latest release asset 并同步脚本。更新已有的同版本 Release 只会产生 `release: edited`，不会让 Greasy Fork 发布新版本。
 
 ## Actions 仓库密钥总表
 
@@ -159,7 +169,6 @@ Settings -> Secrets and variables -> Actions
 | `GITHUB_TOKEN` | GitHub 内置 token | ❌ | 创建或更新 GitHub Release、读取 Release assets | [查看说明](#key-github-token) |
 | `GITEE_PRIVATE_KEY` | Repository secret | ✅ | `Yikun/hub-mirror-action` 推送 Gitee 镜像代码 | [配置步骤](#key-gitee-private-key) |
 | `GITEE_TOKEN` | Repository secret | ✅ | Gitee 代码镜像校验、创建 tag / Release、上传 Release 附件 | [配置步骤](#key-gitee-token) |
-| `GREASYFORK_WEBHOOK_URL` | Repository secret | 可选 | Actions 最后主动通知 Greasy Fork webhook | [配置步骤](#key-greasyfork-webhook-url) |
 
 <a id="key-github-token"></a>
 
@@ -270,29 +279,6 @@ Value: 上面复制的 Gitee 私人令牌
 
 Token 所属 Gitee 账号必须能写入 `vincent-zyu/tampermonkey-plugin-koishi-market-ai-helper`。
 
-<a id="key-greasyfork-webhook-url"></a>
-
-### `GREASYFORK_WEBHOOK_URL`
-
-如果只使用 GitHub 仓库 Webhook，可以不配置这个 secret。
-
-如果想让 GitHub Actions 在 `build publish` 的最后也主动 POST 一次 Greasy Fork webhook，可以新增：
-
-```text
-Name: GREASYFORK_WEBHOOK_URL
-Value: https://greasyfork.org/zh-CN/users/1621917-vincentzyu233/webhook
-```
-
-不建议同时长期启用“GitHub 仓库 Webhook”和这个 Actions secret，避免一次 release 产生两次通知。当前如果 GitHub 仓库 Webhook 持续返回 403，可以先配置这个 secret 测试 Actions 直连通知。
-
-如果没有配置，会输出：
-
-```text
-GREASYFORK_WEBHOOK_URL is not configured. Skipping Greasy Fork webhook notification.
-```
-
-这是正常跳过，不代表 Release、Pages 或 Gitee 同步失败。
-
 ## 验证
 
 发布后检查：
@@ -322,3 +308,6 @@ GREASYFORK_WEBHOOK_URL is not configured. Skipping Greasy Fork webhook notificat
 3. `.user.js` 头部的 `@version` 已更新。
 4. GitHub Webhook 事件选择了 `Releases`。
 5. GitHub Webhook 的 `Payload URL` 是 Greasy Fork 页面显示的 webhook URL。
+6. GitHub Webhook 的 `Secret` 与 Greasy Fork Webhook 配置说明页生成的 Secret 完全一致。
+7. GitHub Webhook 最近一次 `release: published` 投递是否为 `2xx`；如果返回 `403`，优先重新生成 Secret 并同步更新 GitHub Webhook。
+8. 当前操作是否创建了新版本 Release；同版本 Release 的 `edited` 事件不会触发 Greasy Fork 发布新版本。
